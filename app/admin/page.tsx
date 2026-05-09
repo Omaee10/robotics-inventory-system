@@ -6,7 +6,7 @@ import Image from "next/image";
 import PartCard from "@/components/PartCard";
 import PartModal from "@/components/PartModal";
 import DrawerModal from "@/components/DrawerModal";
-import { AccessCode, Drawer, Log, Part } from "@/lib/types";
+import { AccessCode, Drawer, Log, Part, Vendor } from "@/lib/types";
 import { CATEGORIES } from "@/lib/data";
 import {
   fetchParts,
@@ -20,17 +20,30 @@ import {
   insertAccessCode,
   deleteAccessCode,
   logActivity,
+  fetchVendors,
+  insertVendor,
+  updateVendor,
+  deleteVendor,
 } from "@/lib/supabase";
 import { useToast } from "@/lib/toastContext";
 import { useSession } from "@/lib/sessionContext";
 
-type Tab = "inventory" | "logs" | "codes";
+type Tab = "inventory" | "logs" | "codes" | "vendors";
 
 // ── CSV export helper ───────────────────────────────────────────────────────
 function exportInventoryCSV(parts: Part[], drawers: Drawer[]) {
-  const headers = ["Name", "Category", "Drawer", "Quantity", "Min Quantity", "Description"];
+  const headers = [
+    "Name",
+    "Company",
+    "Category",
+    "Drawer",
+    "Quantity",
+    "Min Quantity",
+    "Description",
+  ];
   const rows = parts.map((p) => [
     p.name,
+    p.company,
     p.category,
     drawers.find((d) => d.id === p.drawerId)?.label ?? p.drawerId,
     String(p.quantity),
@@ -92,6 +105,13 @@ export default function AdminDashboard() {
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [codeError, setCodeError] = useState("");
 
+  // Vendors state
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorsLoading, setVendorsLoading] = useState(false);
+  const [vendorForm, setVendorForm] = useState({ name: "", base_url: "" });
+  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [vendorError, setVendorError] = useState("");
+
   useEffect(() => {
     if (!sessionHydrated) return;
     if (session === null) router.replace("/");
@@ -110,6 +130,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadParts();
     fetchDrawers().then((data) => { if (data) setDrawers(data); });
+    fetchVendors().then((data) => { if (data) setVendors(data); });
   }, [loadParts]);
 
   const loadLogs = useCallback(async () => {
@@ -126,10 +147,18 @@ export default function AdminDashboard() {
     setCodesLoading(false);
   }, []);
 
+  const loadVendors = useCallback(async () => {
+    setVendorsLoading(true);
+    const data = await fetchVendors();
+    if (data) setVendors(data);
+    setVendorsLoading(false);
+  }, []);
+
   useEffect(() => {
     if (activeTab === "logs") loadLogs();
     if (activeTab === "codes") loadCodes();
-  }, [activeTab, loadLogs, loadCodes]);
+    if (activeTab === "vendors") loadVendors();
+  }, [activeTab, loadLogs, loadCodes, loadVendors]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
   const filteredParts = useMemo(() => {
@@ -137,6 +166,7 @@ export default function AdminDashboard() {
     return parts.filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(q) ||
+        p.company.toLowerCase().includes(q) ||
         p.drawerId.toLowerCase().includes(q) ||
         p.category.toLowerCase().includes(q);
       const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
@@ -239,6 +269,42 @@ export default function AdminDashboard() {
     }
   };
 
+  // ── Vendor handlers ───────────────────────────────────────────────────────
+  const handleSaveVendor = async () => {
+    setVendorError("");
+    const name = vendorForm.name.trim();
+    const base_url = vendorForm.base_url.trim();
+    if (!name || !base_url) {
+      setVendorError("Both Name and Base URL are required.");
+      return;
+    }
+    if (editingVendor) {
+      const { error } = await updateVendor(editingVendor.id, name, base_url);
+      if (error) { setVendorError(error); return; }
+      setVendors((prev) => prev.map((v) => v.id === editingVendor.id ? { ...v, name, base_url } : v));
+      addToast(`${name} updated.`);
+    } else {
+      const { data, error } = await insertVendor(name, base_url);
+      if (error || !data) { setVendorError(error ?? "Failed to add vendor."); return; }
+      setVendors((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+      addToast(`${name} added.`);
+    }
+    setVendorForm({ name: "", base_url: "" });
+    setEditingVendor(null);
+  };
+
+  const handleDeleteVendor = async (id: string) => {
+    setVendors((prev) => prev.filter((v) => v.id !== id));
+    const { error } = await deleteVendor(id);
+    if (error) { addToast("Failed to delete vendor.", "error"); loadVendors(); }
+  };
+
+  const startEditVendor = (v: Vendor) => {
+    setEditingVendor(v);
+    setVendorForm({ name: v.name, base_url: v.base_url });
+    setVendorError("");
+  };
+
   if (!sessionHydrated) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
@@ -271,7 +337,7 @@ export default function AdminDashboard() {
 
           {/* Tab nav */}
           <nav className="ml-6 hidden sm:flex items-center gap-1">
-            {(["inventory", "logs", "codes"] as Tab[]).map((tab) => (
+            {(["inventory", "logs", "codes", "vendors"] as Tab[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -281,7 +347,7 @@ export default function AdminDashboard() {
                     : "text-gray-400 hover:text-white hover:bg-gray-800"
                 }`}
               >
-                {tab === "inventory" ? "📦 Inventory" : tab === "logs" ? "📋 Activity Log" : "🔑 Access Codes"}
+                {tab === "inventory" ? "📦 Inventory" : tab === "logs" ? "📋 Activity Log" : tab === "codes" ? "🔑 Access Codes" : "🏪 Vendors"}
               </button>
             ))}
           </nav>
@@ -302,7 +368,7 @@ export default function AdminDashboard() {
 
         {/* Mobile tab bar */}
         <div className="sm:hidden flex border-t border-gray-800">
-          {(["inventory", "logs", "codes"] as Tab[]).map((tab) => (
+          {(["inventory", "logs", "codes", "vendors"] as Tab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -310,7 +376,7 @@ export default function AdminDashboard() {
                 activeTab === tab ? "bg-white text-black" : "text-gray-400"
               }`}
             >
-              {tab === "inventory" ? "📦 Inventory" : tab === "logs" ? "📋 Logs" : "🔑 Codes"}
+              {tab === "inventory" ? "📦 Inventory" : tab === "logs" ? "📋 Logs" : tab === "codes" ? "🔑 Codes" : "🏪 Vendors"}
             </button>
           ))}
         </div>
@@ -366,7 +432,7 @@ export default function AdminDashboard() {
                 </svg>
                 <input
                   type="search"
-                  placeholder="Search by name, category, or drawer…"
+                  placeholder="Search by name, company, category, or drawer…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black shadow-sm transition"
@@ -616,6 +682,128 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* ── VENDORS TAB ── */}
+        {activeTab === "vendors" && (
+          <div className="max-w-2xl">
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-slate-800">Vendor Management</h2>
+              <p className="text-sm text-slate-500 mt-0.5">
+                Manage vendor names and base URLs. These appear as options in the "Add Part" modal so students can quickly find product images.
+              </p>
+            </div>
+
+            {/* Add / Edit form */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
+              <h3 className="font-semibold text-slate-700 mb-4 text-sm uppercase tracking-wide">
+                {editingVendor ? `Editing: ${editingVendor.name}` : "Add New Vendor"}
+              </h3>
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-600">Vendor Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. REV Robotics"
+                      value={vendorForm.name}
+                      onChange={(e) => { setVendorForm({ ...vendorForm, name: e.target.value }); setVendorError(""); }}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-600">Base URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://www.revrobotics.com"
+                      value={vendorForm.base_url}
+                      onChange={(e) => { setVendorForm({ ...vendorForm, base_url: e.target.value }); setVendorError(""); }}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
+                    />
+                  </div>
+                </div>
+                {vendorError && <p className="text-xs text-red-500">{vendorError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveVendor}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-gray-800 text-white text-sm font-bold rounded-xl transition-colors"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    {editingVendor ? "Save Changes" : "Add Vendor"}
+                  </button>
+                  {editingVendor && (
+                    <button
+                      onClick={() => { setEditingVendor(null); setVendorForm({ name: "", base_url: "" }); setVendorError(""); }}
+                      className="px-5 py-2.5 border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Vendors list */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">
+                  Vendors ({vendors.length})
+                </h3>
+                <button
+                  onClick={loadVendors}
+                  disabled={vendorsLoading}
+                  className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  {vendorsLoading ? "Loading…" : "Refresh"}
+                </button>
+              </div>
+              {vendorsLoading ? (
+                <div className="p-6 space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse" />
+                  ))}
+                </div>
+              ) : vendors.length === 0 ? (
+                <div className="p-10 text-center text-slate-400 text-sm">
+                  No vendors yet. Add one above.
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {vendors.map((v) => (
+                    <li key={v.id} className="px-6 py-4 flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800">{v.name}</p>
+                        <a
+                          href={v.base_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-slate-400 hover:text-slate-600 underline truncate block"
+                        >
+                          {v.base_url}
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => startEditVendor(v)}
+                          className="text-xs text-slate-500 hover:text-black hover:bg-slate-100 px-2.5 py-1 rounded-lg transition-colors font-medium"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteVendor(v.id)}
+                          className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2.5 py-1 rounded-lg transition-colors font-medium"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Modals */}
@@ -629,6 +817,7 @@ export default function AdminDashboard() {
         onSave={handleSave}
         editPart={editPart}
         drawers={drawers}
+        vendors={vendors}
       />
       <DrawerModal
         isOpen={isDrawerModalOpen}

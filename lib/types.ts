@@ -1,6 +1,8 @@
 export interface Part {
   id: string;
   name: string;
+  /** Supplier / vendor name (e.g. REV Robotics). */
+  company: string;
   category: string;
   quantity: number;
   drawerId: string;
@@ -29,6 +31,13 @@ export interface Log {
   part_name: string;
   part_id: string | null;
   details: string | null;
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
+  base_url: string;
+  created_at: string;
 }
 
 export type UserRole = "student" | "mentor";

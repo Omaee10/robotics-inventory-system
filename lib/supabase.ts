@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { AccessCode, Drawer, Log, Part } from "./types";
+import { AccessCode, Drawer, Log, Part, Vendor } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -22,6 +22,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 interface DbPart {
   id: string;
   name: string;
+  company?: string | null;
   category: string;
   quantity: number;
   drawer_id: string;
@@ -34,6 +35,7 @@ function mapDbPart(row: DbPart): Part {
   return {
     id: row.id,
     name: row.name,
+    company: row.company ?? "",
     category: row.category,
     quantity: row.quantity,
     drawerId: row.drawer_id,
@@ -46,6 +48,7 @@ function mapDbPart(row: DbPart): Part {
 function partToDb(part: Omit<Part, "id">): Omit<DbPart, "id"> {
   return {
     name: part.name,
+    company: part.company.trim() || "",
     category: part.category,
     quantity: part.quantity,
     drawer_id: part.drawerId,
@@ -262,6 +265,69 @@ export async function deleteAccessCode(
 
   if (error) {
     console.error("Supabase deleteAccessCode error:", error.message);
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+// ── Vendors ──────────────────────────────────────────────────────────────────
+
+/** Fetch all vendors ordered by name. */
+export async function fetchVendors(): Promise<Vendor[] | null> {
+  const { data, error } = await supabase
+    .from("vendors")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Supabase fetchVendors error:", error.message);
+    return null;
+  }
+  return data as Vendor[];
+}
+
+/** Insert a new vendor. */
+export async function insertVendor(
+  name: string,
+  base_url: string
+): Promise<{ data: Vendor | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from("vendors")
+    .insert({ name, base_url })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Supabase insertVendor error:", error.message);
+    return { data: null, error: error.message };
+  }
+  return { data: data as Vendor, error: null };
+}
+
+/** Update an existing vendor. */
+export async function updateVendor(
+  id: string,
+  name: string,
+  base_url: string
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from("vendors")
+    .update({ name, base_url })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Supabase updateVendor error:", error.message);
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/** Delete a vendor by id. */
+export async function deleteVendor(id: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from("vendors").delete().eq("id", id);
+
+  if (error) {
+    console.error("Supabase deleteVendor error:", error.message);
     return { error: error.message };
   }
   return { error: null };

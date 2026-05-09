@@ -6,7 +6,7 @@ import Image from "next/image";
 import PartCard from "@/components/PartCard";
 import PartModal from "@/components/PartModal";
 import DrawerModal from "@/components/DrawerModal";
-import { Drawer, Part } from "@/lib/types";
+import { Drawer, Part, Vendor } from "@/lib/types";
 import { CATEGORIES } from "@/lib/data";
 import {
   fetchDrawers,
@@ -14,6 +14,7 @@ import {
   insertPart,
   updatePartQuantity,
   logActivity,
+  fetchVendors,
 } from "@/lib/supabase";
 import { useToast } from "@/lib/toastContext";
 import { useSession } from "@/lib/sessionContext";
@@ -25,6 +26,7 @@ export default function StudentDashboard() {
 
   const [parts, setParts] = useState<Part[]>([]);
   const [drawers, setDrawers] = useState<Drawer[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -50,6 +52,7 @@ export default function StudentDashboard() {
   useEffect(() => {
     loadParts();
     fetchDrawers().then((data) => { if (data) setDrawers(data); });
+    fetchVendors().then((data) => { if (data) setVendors(data); });
   }, [loadParts]);
 
   const filteredParts = useMemo(() => {
@@ -57,6 +60,7 @@ export default function StudentDashboard() {
     return parts.filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(q) ||
+        p.company.toLowerCase().includes(q) ||
         p.drawerId.toLowerCase().includes(q) ||
         p.category.toLowerCase().includes(q);
       const matchesCategory =
@@ -195,7 +199,7 @@ export default function StudentDashboard() {
             </svg>
             <input
               type="search"
-              placeholder="Search by name, category, or drawer…"
+              placeholder="Search by name, company, category, or drawer…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent shadow-sm transition"
@@ -301,6 +305,7 @@ export default function StudentDashboard() {
         onSave={handleSave}
         editPart={null}
         drawers={drawers}
+        vendors={vendors}
       />
       <DrawerModal
         isOpen={isDrawerModalOpen}
