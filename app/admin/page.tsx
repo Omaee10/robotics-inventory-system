@@ -1,0 +1,672 @@
+"use client";
+
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import PartCard from "@/components/PartCard";
+import PartModal from "@/components/PartModal";
+import DrawerModal from "@/components/DrawerModal";
+import { AccessCode, Drawer, Log, Part } from "@/lib/types";
+import { CATEGORIES } from "@/lib/data";
+import {
+  fetchParts,
+  insertPart,
+  updatePart,
+  updatePartQuantity,
+  deletePart,
+  fetchDrawers,
+  fetchLogs,
+  fetchAccessCodes,
+  insertAccessCode,
+  deleteAccessCode,
+  logActivity,
+} from "@/lib/supabase";
+import { useToast } from "@/lib/toastContext";
+import { useSession } from "@/lib/sessionContext";
+
+type Tab = "inventory" | "logs" | "codes";
+
+// ── CSV export helper ───────────────────────────────────────────────────────
+function exportInventoryCSV(parts: Part[], drawers: Drawer[]) {
+  const headers = ["Name", "Category", "Drawer", "Quantity", "Min Quantity", "Description"];
+  const rows = parts.map((p) => [
+    p.name,
+    p.category,
+    drawers.find((d) => d.id === p.drawerId)?.label ?? p.drawerId,
+    String(p.quantity),
+    String(p.minQuantity),
+    p.description,
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `robotics-inventory-${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function generateCode(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
+export default function AdminDashboard() {
+  const { session, sessionHydrated, logout } = useSession();
+  const router = useRouter();
+  const { addToast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<Tab>("inventory");
+
+  // Inventory state
+  const [parts, setParts] = useState<Part[]>([]);
+  const [drawers, setDrawers] = useState<Drawer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDrawerModalOpen, setIsDrawerModalOpen] = useState(false);
+  const [editPart, setEditPart] = useState<Part | null>(null);
+
+  // Logs state
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  // Access codes state
+  const [accessCodes, setAccessCodes] = useState<AccessCode[]>([]);
+  const [codesLoading, setCodesLoading] = useState(false);
+  const [newCodeLabel, setNewCodeLabel] = useState("");
+  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState("");
+
+  useEffect(() => {
+    if (!sessionHydrated) return;
+    if (session === null) router.replace("/");
+    else if (session.role !== "mentor") router.replace("/dashboard");
+  }, [session, sessionHydrated, router]);
+
+  // ── Data loading ──────────────────────────────────────────────────────────
+  const loadParts = useCallback(async () => {
+    setLoading(true);
+    const data = await fetchParts();
+    if (data !== null) setParts(data);
+    else addToast("Could not load parts.", "error");
+    setLoading(false);
+  }, [addToast]);
+
+  useEffect(() => {
+    loadParts();
+    fetchDrawers().then((data) => { if (data) setDrawers(data); });
+  }, [loadParts]);
+
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    const data = await fetchLogs();
+    if (data) setLogs(data);
+    setLogsLoading(false);
+  }, []);
+
+  const loadCodes = useCallback(async () => {
+    setCodesLoading(true);
+    const data = await fetchAccessCodes();
+    if (data) setAccessCodes(data);
+    setCodesLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "logs") loadLogs();
+    if (activeTab === "codes") loadCodes();
+  }, [activeTab, loadLogs, loadCodes]);
+
+  // ── Derived state ──────────────────────────────────────────────────────────
+  const filteredParts = useMemo(() => {
+    const q = search.toLowerCase();
+    return parts.filter((p) => {
+      const matchesSearch =
+        p.name.toLowerCase().includes(q) ||
+        p.drawerId.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q);
+      const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [parts, search, selectedCategory]);
+
+  const stats = useMemo(() => {
+    const total = parts.reduce((sum, p) => sum + p.quantity, 0);
+    const lowStock = parts.filter((p) => p.quantity <= p.minQuantity);
+    return { totalParts: parts.length, totalItems: total, lowStock };
+  }, [parts]);
+
+  // ── CRUD handlers ──────────────────────────────────────────────────────────
+  const handleSave = async (data: Omit<Part, "id"> & { id?: string }) => {
+    if (data.id) {
+      setParts((prev) => prev.map((p) => (p.id === data.id ? ({ ...data, id: data.id! } as Part) : p)));
+      const ok = await updatePart(data.id, data);
+      if (!ok) {
+        addToast("Failed to save changes.", "error");
+        await loadParts();
+      } else {
+        await logActivity({ user_name: "Mentor", action: "edit_part", part_name: data.name, part_id: data.id, details: `Updated ${data.name}` });
+      }
+    } else {
+      const { id: _ignored, ...partData } = { id: undefined, ...data };
+      const { data: created, error: insertErr } = await insertPart(partData);
+      if (created) {
+        setParts((prev) => [created, ...prev]);
+        addToast(`${created.name} added to inventory.`);
+        await logActivity({ user_name: "Mentor", action: "add_part", part_name: created.name, part_id: created.id, details: `Added new part: ${created.name}` });
+      } else {
+        addToast(insertErr || "Failed to add part.", "error");
+      }
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const part = parts.find((p) => p.id === id);
+    setParts((prev) => prev.filter((p) => p.id !== id));
+    const ok = await deletePart(id);
+    if (!ok) {
+      addToast("Failed to delete part.", "error");
+      await loadParts();
+    } else if (part) {
+      await logActivity({ user_name: "Mentor", action: "delete_part", part_name: part.name, part_id: id, details: `Deleted ${part.name}` });
+    }
+  };
+
+  const handleAdjustQuantity = async (id: string, delta: number) => {
+    const part = parts.find((p) => p.id === id);
+    let newQuantity = 0;
+    setParts((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        newQuantity = Math.max(0, p.quantity + delta);
+        return { ...p, quantity: newQuantity };
+      })
+    );
+    const ok = await updatePartQuantity(id, newQuantity);
+    if (!ok) {
+      setParts((prev) => prev.map((p) => (p.id === id ? { ...p, quantity: p.quantity - delta } : p)));
+      addToast("Failed to update quantity.", "error");
+      return;
+    }
+    if (part) {
+      const action = delta < 0 ? "take" : "add";
+      await logActivity({
+        user_name: "Mentor",
+        action,
+        part_name: part.name,
+        part_id: id,
+        details: `${action === "take" ? "Took" : "Added"} ${Math.abs(delta)} × ${part.name}`,
+      });
+    }
+  };
+
+  // ── Access code handlers ───────────────────────────────────────────────────
+  const handleGenerateCode = async () => {
+    setCodeError("");
+    const code = generateCode();
+    setGeneratedCode(code);
+    const { data, error } = await insertAccessCode(code, newCodeLabel.trim());
+    if (error) {
+      setCodeError(error);
+      setGeneratedCode(null);
+    } else if (data) {
+      setAccessCodes((prev) => [data, ...prev]);
+      setNewCodeLabel("");
+      addToast(`Code ${code} created.`);
+    }
+  };
+
+  const handleDeleteCode = async (id: string) => {
+    setAccessCodes((prev) => prev.filter((c) => c.id !== id));
+    const { error } = await deleteAccessCode(id);
+    if (error) {
+      addToast("Failed to delete code.", "error");
+      loadCodes();
+    }
+  };
+
+  if (!sessionHydrated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!session) return null;
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-black border-b border-gray-800 shadow-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow">
+              <svg className="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <rect x="2" y="7" width="20" height="14" rx="2" />
+                <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+                <line x1="12" y1="12" x2="12" y2="16" />
+                <line x1="10" y1="14" x2="14" y2="14" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="font-bold text-white leading-tight text-base">Robotics Inventory</h1>
+              <p className="text-xs text-gray-400 leading-tight">Admin Dashboard</p>
+            </div>
+          </div>
+
+          {/* Tab nav */}
+          <nav className="ml-6 hidden sm:flex items-center gap-1">
+            {(["inventory", "logs", "codes"] as Tab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors capitalize ${
+                  activeTab === tab
+                    ? "bg-white text-black"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                }`}
+              >
+                {tab === "inventory" ? "📦 Inventory" : tab === "logs" ? "📋 Activity Log" : "🔑 Access Codes"}
+              </button>
+            ))}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-900/40 border border-amber-700/50 px-3 py-1.5 rounded-full font-medium">
+              🔑 Mentor
+            </span>
+            <button
+              onClick={() => { logout(); router.push("/"); }}
+              className="text-xs text-gray-400 hover:text-white hover:bg-gray-800 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Sign out
+            </button>
+            <Image src="/itkan-logo.png" alt="ITKAN" width={36} height={36} className="invert opacity-80" />
+          </div>
+        </div>
+
+        {/* Mobile tab bar */}
+        <div className="sm:hidden flex border-t border-gray-800">
+          {(["inventory", "logs", "codes"] as Tab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+                activeTab === tab ? "bg-white text-black" : "text-gray-400"
+              }`}
+            >
+              {tab === "inventory" ? "📦 Inventory" : tab === "logs" ? "📋 Logs" : "🔑 Codes"}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* ── INVENTORY TAB ── */}
+        {activeTab === "inventory" && (
+          <>
+            {/* Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+              <StatCard label="Total Parts" value={stats.totalParts} icon="🗂️" color="bg-gray-100 text-gray-700" />
+              <StatCard label="Total Items" value={stats.totalItems} icon="📦" color="bg-gray-100 text-gray-700" />
+              <StatCard label="Low Stock" value={stats.lowStock.length} icon="⚠️"
+                color={stats.lowStock.length > 0 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-700"} />
+              <div className="rounded-2xl bg-black p-4 flex flex-col justify-between">
+                <span className="text-xs font-medium text-gray-400 mb-2">Export</span>
+                <button
+                  onClick={() => exportInventoryCSV(parts, drawers)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-100 text-black text-xs font-bold rounded-xl transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  CSV Export
+                </button>
+              </div>
+            </div>
+
+            {/* Low stock alerts */}
+            {stats.lowStock.length > 0 && (
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-3">⚠ Low Stock Alerts</p>
+                <div className="flex flex-wrap gap-2">
+                  {stats.lowStock.map((p) => (
+                    <span key={p.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold rounded-full">
+                      {p.name}
+                      <span className="bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded-md text-xs font-bold">{p.quantity}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Toolbar */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
+              <div className="relative flex-1">
+                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input
+                  type="search"
+                  placeholder="Search by name, category, or drawer…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black shadow-sm transition"
+                />
+              </div>
+              <button
+                onClick={() => { setEditPart(null); setIsModalOpen(true); }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-gray-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors whitespace-nowrap"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Add New Part
+              </button>
+              <button
+                onClick={() => setIsDrawerModalOpen(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-xl border border-slate-200 shadow-sm transition-colors whitespace-nowrap"
+              >
+                <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <rect x="2" y="7" width="20" height="14" rx="2" />
+                  <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+                  <line x1="12" y1="12" x2="12" y2="16" />
+                  <line x1="10" y1="14" x2="14" y2="14" />
+                </svg>
+                Drawers
+              </button>
+            </div>
+
+            {/* Category chips */}
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                    selectedCategory === cat
+                      ? "bg-black text-white border-black shadow-sm"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 hover:text-gray-900"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-pulse">
+                    <div className="h-44 bg-slate-100" />
+                    <div className="p-4 flex flex-col gap-3">
+                      <div className="h-4 bg-slate-100 rounded-full w-3/4" />
+                      <div className="h-3 bg-slate-100 rounded-full w-1/2" />
+                      <div className="h-8 bg-slate-100 rounded-xl" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-400 mb-4">
+                  {filteredParts.length === parts.length
+                    ? `Showing all ${parts.length} parts`
+                    : `Showing ${filteredParts.length} of ${parts.length} parts`}
+                </p>
+                {filteredParts.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    {filteredParts.map((part) => (
+                      <PartCard
+                        key={part.id}
+                        part={part}
+                        drawers={drawers}
+                        canEdit={true}
+                        onEdit={(p) => { setEditPart(p); setIsModalOpen(true); }}
+                        onDelete={handleDelete}
+                        onAdjustQuantity={handleAdjustQuantity}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4 text-3xl">🔍</div>
+                    <h3 className="font-semibold text-slate-700 mb-1">No parts found</h3>
+                    <p className="text-sm text-slate-400 max-w-xs">Try adjusting your search or add a new part.</p>
+                    <button
+                      onClick={() => { setEditPart(null); setIsModalOpen(true); }}
+                      className="mt-5 px-5 py-2.5 bg-black hover:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-colors"
+                    >
+                      Add New Part
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── ACTIVITY LOG TAB ── */}
+        {activeTab === "logs" && (
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Activity Log</h2>
+                <p className="text-sm text-slate-500 mt-0.5">All inventory changes with who made them and when.</p>
+              </div>
+              <button
+                onClick={loadLogs}
+                disabled={logsLoading}
+                className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-xl transition-colors disabled:opacity-50"
+              >
+                <svg className={`w-4 h-4 ${logsLoading ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+                Refresh
+              </button>
+            </div>
+
+            {logsLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-white rounded-xl border border-slate-200 h-16 animate-pulse" />
+                ))}
+              </div>
+            ) : logs.length === 0 ? (
+              <div className="text-center py-20">
+                <div className="text-4xl mb-3">📋</div>
+                <p className="text-slate-500 font-medium">No activity yet</p>
+                <p className="text-slate-400 text-sm mt-1">Actions will appear here once students or mentors use the inventory.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Time</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Action</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">Part</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {logs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{timeAgo(log.created_at)}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                            {log.user_name === "Mentor" ? "🔑" : "🎓"} {log.user_name}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <ActionBadge action={log.action} />
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600 font-medium hidden sm:table-cell">{log.part_name}</td>
+                        <td className="px-4 py-3 text-xs text-slate-400 hidden md:table-cell">{log.details ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ACCESS CODES TAB ── */}
+        {activeTab === "codes" && (
+          <div className="max-w-2xl">
+            <div className="mb-6">
+              <h2 className="text-lg font-bold text-slate-800">Access Codes</h2>
+              <p className="text-sm text-slate-500 mt-0.5">Generate and manage 6-digit mentor access codes.</p>
+            </div>
+
+            {/* Generate new code */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
+              <h3 className="font-semibold text-slate-700 mb-4 text-sm uppercase tracking-wide">Generate New Code</h3>
+              <div className="flex flex-col gap-4">
+                <input
+                  type="text"
+                  placeholder="Label (optional, e.g. 'Coach Smith')"
+                  value={newCodeLabel}
+                  onChange={(e) => { setNewCodeLabel(e.target.value); setCodeError(""); }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+                {codeError && <p className="text-xs text-red-500">{codeError}</p>}
+                {generatedCode && (
+                  <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <span className="text-green-700 text-xs font-medium">New code created:</span>
+                    <span className="font-mono text-2xl font-bold text-green-800 tracking-[0.4em]">{generatedCode}</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleGenerateCode}
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-black hover:bg-gray-800 text-white font-bold rounded-xl transition-colors"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Generate Code
+                </button>
+              </div>
+            </div>
+
+            {/* Existing codes list */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">Active Codes</h3>
+                <button
+                  onClick={loadCodes}
+                  disabled={codesLoading}
+                  className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  {codesLoading ? "Loading…" : "Refresh"}
+                </button>
+              </div>
+              {codesLoading ? (
+                <div className="p-6 space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse" />
+                  ))}
+                </div>
+              ) : accessCodes.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-slate-400 text-sm">No access codes yet. Generate one above.</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {accessCodes.map((c) => (
+                    <li key={c.id} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <span className="font-mono text-xl font-bold text-slate-800 tracking-[0.3em]">{c.code}</span>
+                        {c.label && <span className="text-sm text-slate-500">{c.label}</span>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-slate-400">{timeAgo(c.created_at)}</span>
+                        <button
+                          onClick={() => handleDeleteCode(c.id)}
+                          className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2.5 py-1 rounded-lg transition-colors font-medium"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Modals */}
+      <PartModal
+        key={isModalOpen ? (editPart?.id ?? "new") : "closed"}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditPart(null);
+        }}
+        onSave={handleSave}
+        editPart={editPart}
+        drawers={drawers}
+      />
+      <DrawerModal
+        isOpen={isDrawerModalOpen}
+        onClose={() => setIsDrawerModalOpen(false)}
+        drawers={drawers}
+        onDrawersChange={setDrawers}
+      />
+    </div>
+  );
+}
+
+// ── Sub-components ──────────────────────────────────────────────────────────
+function StatCard({ label, value, icon, color }: { label: string; value: number; icon: string; color: string }) {
+  return (
+    <div className={`rounded-2xl p-4 ${color} bg-opacity-60`}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-lg">{icon}</span>
+        <span className="text-xs font-medium opacity-75">{label}</span>
+      </div>
+      <p className="text-2xl font-bold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+const ACTION_STYLES: Record<string, string> = {
+  take: "bg-orange-100 text-orange-700",
+  add: "bg-green-100 text-green-700",
+  add_part: "bg-blue-100 text-blue-700",
+  edit_part: "bg-purple-100 text-purple-700",
+  delete_part: "bg-red-100 text-red-700",
+};
+
+function ActionBadge({ action }: { action: string }) {
+  const label = action.replace("_", " ");
+  const style = ACTION_STYLES[action] ?? "bg-slate-100 text-slate-600";
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${style}`}>
+      {label}
+    </span>
+  );
+}

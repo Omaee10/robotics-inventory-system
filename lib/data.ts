@@ -1,0 +1,134 @@
+import { Part } from "./types";
+
+export const INITIAL_PARTS: Part[] = [
+  {
+    id: "1",
+    name: "REV Through Bore Encoder",
+    category: "Sensors",
+    quantity: 8,
+    drawerId: "A-01",
+    imageUrl: "https://placehold.co/400x300/1e3a8a/ffffff?text=Encoder",
+    description: "Magnetic encoder for precise shaft rotation measurement.",
+    minQuantity: 4
+  },
+  {
+    id: "2",
+    name: "NEO Brushless Motor",
+    category: "Motors",
+    quantity: 6,
+    drawerId: "B-03",
+    imageUrl: "https://placehold.co/400x300/1d4ed8/ffffff?text=NEO+Motor",
+    description: "550W brushless motor for high-performance drivetrains.",
+    minQuantity: 4
+  },
+  {
+    id: "3",
+    name: "SPARK MAX Controller",
+    category: "Electronics",
+    quantity: 2,
+    drawerId: "C-07",
+    imageUrl: "https://placehold.co/400x300/2563eb/ffffff?text=SPARK+MAX",
+    description: "Motor controller for REV NEO and CIM motors.",
+    minQuantity: 4
+  },
+  {
+    id: "4",
+    name: "AndyMark CIM Motor",
+    category: "Motors",
+    quantity: 12,
+    drawerId: "B-01",
+    imageUrl: "https://placehold.co/400x300/1e40af/ffffff?text=CIM+Motor",
+    description: "Standard FRC CIM motor, 2.7 HP at stall.",
+    minQuantity: 6
+  },
+  {
+    id: "5",
+    name: "Pneumatic Cylinder 1.5\"",
+    category: "Pneumatics",
+    quantity: 5,
+    drawerId: "D-02",
+    imageUrl: "https://placehold.co/400x300/3b82f6/ffffff?text=Cylinder",
+    description: "Double-acting pneumatic cylinder, 1.5 inch bore.",
+    minQuantity: 2
+  },
+  {
+    id: "6",
+    name: "roboRIO 2.0",
+    category: "Electronics",
+    quantity: 1,
+    drawerId: "E-01",
+    imageUrl: "https://placehold.co/400x300/1e3a8a/ffffff?text=roboRIO",
+    description: "NI FRC robot controller, main brain of the robot.",
+    minQuantity: 1
+  },
+  {
+    id: "7",
+    name: "MK4i Swerve Module",
+    category: "Drive",
+    quantity: 4,
+    drawerId: "F-01",
+    imageUrl: "https://placehold.co/400x300/1d4ed8/ffffff?text=Swerve+Module",
+    description: "SDS MK4i swerve drive module with Falcon 500.",
+    minQuantity: 4
+  },
+  {
+    id: "8",
+    name: "Limelight 3",
+    category: "Vision",
+    quantity: 2,
+    drawerId: "G-04",
+    imageUrl: "https://placehold.co/400x300/2563eb/ffffff?text=Limelight",
+    description: "Smart camera for vision tracking and AprilTag detection.",
+    minQuantity: 1
+  },
+  {
+    id: "9",
+    name: "REV Power Distribution Hub",
+    category: "Electronics",
+    quantity: 1,
+    drawerId: "C-01",
+    imageUrl: "https://placehold.co/400x300/1e40af/ffffff?text=PDH",
+    description: "Smart power distribution hub with 20 channels.",
+    minQuantity: 1
+  },
+  {
+    id: "10",
+    name: "Victor SPX",
+    category: "Electronics",
+    quantity: 7,
+    drawerId: "C-05",
+    imageUrl: "https://placehold.co/400x300/3b82f6/ffffff?text=Victor+SPX",
+    description: "CTRE motor controller compatible with CAN bus.",
+    minQuantity: 4
+  },
+  {
+    id: "11",
+    name: "Falcon 500 Motor",
+    category: "Motors",
+    quantity: 3,
+    drawerId: "B-05",
+    imageUrl: "https://placehold.co/400x300/1e3a8a/ffffff?text=Falcon+500",
+    description: "Integrated Talon FX controller brushless motor.",
+    minQuantity: 4
+  },
+  {
+    id: "12",
+    name: "NavX2 Gyroscope",
+    category: "Sensors",
+    quantity: 2,
+    drawerId: "A-03",
+    imageUrl: "https://placehold.co/400x300/1d4ed8/ffffff?text=NavX2",
+    description: "9-axis IMU for field-centric swerve drive.",
+    minQuantity: 1
+  },
+];
+
+export const CATEGORIES = [
+  "All",
+  "Motors",
+  "Electronics",
+  "Sensors",
+  "Pneumatics",
+  "Drive",
+  "Vision",
+];
