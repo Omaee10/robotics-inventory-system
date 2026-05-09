@@ -1,5 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { AccessCode, Drawer, Log, Part, Vendor } from "./types";
+
+function formatSupabaseError(error: PostgrestError): string {
+  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+}
 
 /**
  * Vercel / CI runs `next build` without `.env.local`. Supabase's client throws if the
@@ -90,8 +95,8 @@ export async function insertPart(
     .single();
 
   if (error) {
-    console.error("Supabase insertPart error:", error.message);
-    return { data: null, error: error.message };
+    console.error("Supabase insertPart error:", formatSupabaseError(error));
+    return { data: null, error: formatSupabaseError(error) };
   }
   return { data: mapDbPart(data as DbPart), error: null };
 }
