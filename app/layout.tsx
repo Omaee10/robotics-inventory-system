@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import DeployConfigBanner from "@/components/DeployConfigBanner";
 import { ToastProvider } from "@/lib/toastContext";
 import { SessionProvider } from "@/lib/sessionContext";
 
@@ -16,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <DeployConfigBanner />
         <SessionProvider>
           <ToastProvider>{children}</ToastProvider>
         </SessionProvider>

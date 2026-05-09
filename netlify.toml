@@ -1,0 +1,8 @@
+# Next.js App Router + API routes on Netlify
+# https://docs.netlify.com/frameworks/next-js/overview/
+
+[build]
+  command = "npm run build"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
