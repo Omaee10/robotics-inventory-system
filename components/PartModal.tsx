@@ -7,7 +7,10 @@ import { CATEGORIES } from "@/lib/data";
 interface PartModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (part: Omit<Part, "id"> & { id?: string }) => void | Promise<void>;
+  /** Return false to keep the modal open (save failed). Otherwise it closes. */
+  onSave: (
+    part: Omit<Part, "id"> & { id?: string }
+  ) => void | boolean | Promise<void | boolean>;
   editPart?: Part | null;
   drawers: Drawer[];
   vendors?: Vendor[];
@@ -120,15 +123,16 @@ export default function PartModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await Promise.resolve(
-      onSave({
-        ...form,
-        id: editPart?.id,
-        imageUrl:
-          form.imageUrl ||
-          `https://placehold.co/400x300/111111/ffffff?text=${encodeURIComponent(form.name || "Part")}`,
-      })
-    );
+    const payload = {
+      ...form,
+      id: editPart?.id,
+      imageUrl:
+        form.imageUrl ||
+        `https://placehold.co/400x300/111111/ffffff?text=${encodeURIComponent(form.name || "Part")}`,
+    };
+    const result = onSave(payload);
+    const outcome = await Promise.resolve(result);
+    if (outcome === false) return;
     onClose();
   };
 

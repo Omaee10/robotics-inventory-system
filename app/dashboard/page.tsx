@@ -107,12 +107,16 @@ export default function StudentDashboard() {
     }
   };
 
-  const handleSave = async (data: Omit<Part, "id"> & { id?: string }) => {
-    if (data.id) return;
+  const handleSave = async (
+    data: Omit<Part, "id"> & { id?: string }
+  ): Promise<boolean> => {
+    if (data.id) return false;
     const { id: _ignored, ...partData } = { id: undefined, ...data };
     const { data: created, error } = await insertPart(partData);
     if (created) {
       setParts((prev) => [created, ...prev]);
+      setSearch("");
+      setSelectedCategory("All");
       addToast(`${created.name} added to inventory.`);
       if (session) {
         await logActivity({
@@ -123,9 +127,10 @@ export default function StudentDashboard() {
           details: `Added new part: ${created.name}`,
         });
       }
-    } else {
-      addToast(error || "Failed to add part.", "error");
+      return true;
     }
+    addToast(error || "Failed to add part.", "error");
+    return false;
   };
 
   if (!sessionHydrated) {

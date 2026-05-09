@@ -181,27 +181,46 @@ export default function AdminDashboard() {
   }, [parts]);
 
   // ── CRUD handlers ──────────────────────────────────────────────────────────
-  const handleSave = async (data: Omit<Part, "id"> & { id?: string }) => {
+  const handleSave = async (
+    data: Omit<Part, "id"> & { id?: string }
+  ): Promise<boolean> => {
     if (data.id) {
-      setParts((prev) => prev.map((p) => (p.id === data.id ? ({ ...data, id: data.id! } as Part) : p)));
+      setParts((prev) =>
+        prev.map((p) => (p.id === data.id ? ({ ...data, id: data.id! } as Part) : p))
+      );
       const ok = await updatePart(data.id, data);
       if (!ok) {
         addToast("Failed to save changes.", "error");
         await loadParts();
-      } else {
-        await logActivity({ user_name: "Mentor", action: "edit_part", part_name: data.name, part_id: data.id, details: `Updated ${data.name}` });
+        return false;
       }
-    } else {
-      const { id: _ignored, ...partData } = { id: undefined, ...data };
-      const { data: created, error: insertErr } = await insertPart(partData);
-      if (created) {
-        setParts((prev) => [created, ...prev]);
-        addToast(`${created.name} added to inventory.`);
-        await logActivity({ user_name: "Mentor", action: "add_part", part_name: created.name, part_id: created.id, details: `Added new part: ${created.name}` });
-      } else {
-        addToast(insertErr || "Failed to add part.", "error");
-      }
+      await logActivity({
+        user_name: "Mentor",
+        action: "edit_part",
+        part_name: data.name,
+        part_id: data.id,
+        details: `Updated ${data.name}`,
+      });
+      return true;
     }
+    const { id: _ignored, ...partData } = { id: undefined, ...data };
+    const { data: created, error: insertErr } = await insertPart(partData);
+    if (created) {
+      setParts((prev) => [created, ...prev]);
+      setSearch("");
+      setSelectedCategory("All");
+      addToast(`${created.name} added to inventory.`);
+      await logActivity({
+        user_name: "Mentor",
+        action: "add_part",
+        part_name: created.name,
+        part_id: created.id,
+        details: `Added new part: ${created.name}`,
+      });
+      return true;
+    }
+    addToast(insertErr || "Failed to add part.", "error");
+    return false;
   };
 
   const handleDelete = async (id: string) => {
