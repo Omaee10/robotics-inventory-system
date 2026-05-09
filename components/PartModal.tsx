@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Drawer, Part, Vendor } from "@/lib/types";
 import { CATEGORIES } from "@/lib/data";
+import { useToast } from "@/lib/toastContext";
 
 interface PartModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export default function PartModal({
   drawers,
   vendors = [],
 }: PartModalProps) {
+  const { addToast } = useToast();
   const [form, setForm] = useState<Omit<Part, "id">>(EMPTY_FORM);
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [productUrl, setProductUrl] = useState("");
@@ -123,17 +125,54 @@ export default function PartModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!form.name.trim()) {
+      addToast("Enter a part name.", "error");
+      return;
+    }
+
+    if (drawers.length > 0) {
+      if (!form.drawerId) {
+        addToast("Choose a drawer for this part.", "error");
+        return;
+      }
+    } else if (!form.drawerId.trim()) {
+      addToast(
+        "Enter a drawer label, or use the Drawers button and try again.",
+        "error"
+      );
+      return;
+    }
+
+    const trimmedImg = form.imageUrl.trim();
+    if (trimmedImg && !/^https?:\/\//i.test(trimmedImg)) {
+      addToast(
+        "Image URL must start with http:// or https:// — or leave it blank.",
+        "error"
+      );
+      return;
+    }
+
     const payload = {
       ...form,
       id: editPart?.id,
       imageUrl:
-        form.imageUrl ||
+        trimmedImg ||
         `https://placehold.co/400x300/111111/ffffff?text=${encodeURIComponent(form.name || "Part")}`,
     };
-    const result = onSave(payload);
-    const outcome = await Promise.resolve(result);
-    if (outcome === false) return;
-    onClose();
+
+    try {
+      const result = onSave(payload);
+      const outcome = await Promise.resolve(result);
+      if (outcome === false) return;
+      onClose();
+    } catch (err) {
+      console.error(err);
+      addToast(
+        err instanceof Error ? err.message : "Could not save the part.",
+        "error"
+      );
+    }
   };
 
   const categories = CATEGORIES.filter((c) => c !== "All");
@@ -141,7 +180,7 @@ export default function PartModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -151,7 +190,10 @@ export default function PartModal({
         onClick={onClose}
       />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
           <h2 id="modal-title" className="text-lg font-bold text-slate-800">
             {editPart ? "Edit Part" : "Add New Part"}
@@ -165,14 +207,17 @@ export default function PartModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="px-6 py-5 flex flex-col gap-4"
+        >
           {/* Part Name */}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">
               Part Name <span className="text-red-500">*</span>
             </label>
             <input
-              required
               type="text"
               placeholder="e.g. REV Through Bore Encoder"
               value={form.name}
@@ -224,7 +269,6 @@ export default function PartModal({
             </label>
             {drawers.length > 0 ? (
               <select
-                required
                 value={form.drawerId}
                 onChange={(e) => setForm({ ...form, drawerId: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
@@ -240,7 +284,6 @@ export default function PartModal({
               </select>
             ) : (
               <input
-                required
                 type="text"
                 placeholder="e.g. A-01"
                 value={form.drawerId}
@@ -346,7 +389,7 @@ export default function PartModal({
               </p>
               <div className="flex gap-2">
                 <input
-                  type="url"
+                  type="text"
                   placeholder={
                     selectedVendor
                       ? `${selectedVendor.base_url}/products/…`
@@ -397,7 +440,9 @@ export default function PartModal({
               </label>
               <div className="flex gap-2">
                 <input
-                  type="url"
+                  type="text"
+                  inputMode="url"
+                  autoComplete="off"
                   placeholder="Will be filled automatically…"
                   value={form.imageUrl}
                   onChange={(e) => {
