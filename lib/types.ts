@@ -46,3 +46,8 @@ export interface UserSession {
   role: UserRole;
   name: string;
 }
+
+/** Result of saving a part from PartModal (inline + toast messaging). */
+export type PartSaveResult =
+  | { ok: true }
+  | { ok: false; error: string };

@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Drawer, Part, Vendor } from "@/lib/types";
+import { Drawer, Part, PartSaveResult, Vendor } from "@/lib/types";
 import { CATEGORIES } from "@/lib/data";
 import { useToast } from "@/lib/toastContext";
 
 interface PartModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Return false to keep the modal open (save failed). Otherwise it closes. */
   onSave: (
     part: Omit<Part, "id"> & { id?: string }
-  ) => void | boolean | Promise<void | boolean>;
+  ) => PartSaveResult | Promise<PartSaveResult>;
   editPart?: Part | null;
   drawers: Drawer[];
   vendors?: Vendor[];
@@ -38,6 +37,8 @@ export default function PartModal({
 }: PartModalProps) {
   const { addToast } = useToast();
   const [form, setForm] = useState<Omit<Part, "id">>(EMPTY_FORM);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [imgSearching, setImgSearching] = useState(false);
@@ -105,6 +106,7 @@ export default function PartModal({
     setImgMsg(null);
     setProductUrl("");
     setSelectedVendorId("");
+    setSaveError(null);
     if (editPart) {
       setForm({
         name: editPart.name,
@@ -125,6 +127,15 @@ export default function PartModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError(null);
+
+    if (!editPart && drawers.length === 0) {
+      const msg =
+        "Add at least one drawer first: click Drawers, create a drawer, then add a part.";
+      setSaveError(msg);
+      addToast(msg, "error");
+      return;
+    }
 
     if (!form.name.trim()) {
       addToast("Enter a part name.", "error");
@@ -162,16 +173,22 @@ export default function PartModal({
     };
 
     try {
-      const result = onSave(payload);
-      const outcome = await Promise.resolve(result);
-      if (outcome === false) return;
+      setSaveBusy(true);
+      const result = await Promise.resolve(onSave(payload));
+      if (!result.ok) {
+        setSaveError(result.error);
+        addToast(result.error, "error");
+        return;
+      }
       onClose();
     } catch (err) {
       console.error(err);
-      addToast(
-        err instanceof Error ? err.message : "Could not save the part.",
-        "error"
-      );
+      const msg =
+        err instanceof Error ? err.message : "Could not save the part.";
+      setSaveError(msg);
+      addToast(msg, "error");
+    } finally {
+      setSaveBusy(false);
     }
   };
 
@@ -493,6 +510,13 @@ export default function PartModal({
             )}
           </div>
 
+          {!editPart && drawers.length === 0 && (
+            <p className="text-sm font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              You need at least one drawer before adding parts. Close this dialog,
+              click <strong>Drawers</strong>, add a drawer, then try again.
+            </p>
+          )}
+
           {/* Description */}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">
@@ -508,19 +532,34 @@ export default function PartModal({
             />
           </div>
 
+          {saveError && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800"
+            >
+              {saveError}
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              disabled={saveBusy}
+              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-2.5 rounded-xl bg-black hover:bg-gray-800 text-white text-sm font-semibold transition-colors shadow-sm"
+              disabled={saveBusy}
+              className="flex-1 py-2.5 rounded-xl bg-black hover:bg-gray-800 text-white text-sm font-semibold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editPart ? "Save Changes" : "Add Part"}
+              {saveBusy
+                ? "Saving…"
+                : editPart
+                  ? "Save Changes"
+                  : "Add Part"}
             </button>
           </div>
         </form>

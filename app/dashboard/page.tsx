@@ -6,7 +6,7 @@ import Image from "next/image";
 import PartCard from "@/components/PartCard";
 import PartModal from "@/components/PartModal";
 import DrawerModal from "@/components/DrawerModal";
-import { Drawer, Part, Vendor } from "@/lib/types";
+import { Drawer, Part, PartSaveResult, Vendor } from "@/lib/types";
 import { CATEGORIES } from "@/lib/data";
 import {
   fetchDrawers,
@@ -109,8 +109,10 @@ export default function StudentDashboard() {
 
   const handleSave = async (
     data: Omit<Part, "id"> & { id?: string }
-  ): Promise<boolean> => {
-    if (data.id) return false;
+  ): Promise<PartSaveResult> => {
+    if (data.id) {
+      return { ok: false, error: "Editing is not available in student view." };
+    }
     const { id: _ignored, ...partData } = { id: undefined, ...data };
     const { data: created, error } = await insertPart(partData);
     if (created) {
@@ -118,19 +120,24 @@ export default function StudentDashboard() {
       setSearch("");
       setSelectedCategory("All");
       addToast(`${created.name} added to inventory.`);
-      if (session) {
-        await logActivity({
-          user_name: session.name,
-          action: "add_part",
-          part_name: created.name,
-          part_id: created.id,
-          details: `Added new part: ${created.name}`,
-        });
+      try {
+        if (session) {
+          await logActivity({
+            user_name: session.name,
+            action: "add_part",
+            part_name: created.name,
+            part_id: created.id,
+            details: `Added new part: ${created.name}`,
+          });
+        }
+      } catch (e) {
+        console.error("logActivity:", e);
       }
-      return true;
+      return { ok: true };
     }
-    addToast(error || "Failed to add part.", "error");
-    return false;
+    const msg = error || "Failed to add part.";
+    addToast(msg, "error");
+    return { ok: false, error: msg };
   };
 
   if (!sessionHydrated) {

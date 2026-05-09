@@ -6,7 +6,7 @@ import Image from "next/image";
 import PartCard from "@/components/PartCard";
 import PartModal from "@/components/PartModal";
 import DrawerModal from "@/components/DrawerModal";
-import { AccessCode, Drawer, Log, Part, Vendor } from "@/lib/types";
+import { AccessCode, Drawer, Log, Part, PartSaveResult, Vendor } from "@/lib/types";
 import { CATEGORIES } from "@/lib/data";
 import {
   fetchParts,
@@ -183,25 +183,30 @@ export default function AdminDashboard() {
   // ── CRUD handlers ──────────────────────────────────────────────────────────
   const handleSave = async (
     data: Omit<Part, "id"> & { id?: string }
-  ): Promise<boolean> => {
+  ): Promise<PartSaveResult> => {
     if (data.id) {
       setParts((prev) =>
         prev.map((p) => (p.id === data.id ? ({ ...data, id: data.id! } as Part) : p))
       );
       const ok = await updatePart(data.id, data);
       if (!ok) {
-        addToast("Failed to save changes.", "error");
+        const msg = "Failed to save changes. Check Supabase or your connection.";
+        addToast(msg, "error");
         await loadParts();
-        return false;
+        return { ok: false, error: msg };
       }
-      await logActivity({
-        user_name: "Mentor",
-        action: "edit_part",
-        part_name: data.name,
-        part_id: data.id,
-        details: `Updated ${data.name}`,
-      });
-      return true;
+      try {
+        await logActivity({
+          user_name: "Mentor",
+          action: "edit_part",
+          part_name: data.name,
+          part_id: data.id,
+          details: `Updated ${data.name}`,
+        });
+      } catch (e) {
+        console.error("logActivity:", e);
+      }
+      return { ok: true };
     }
     const { id: _ignored, ...partData } = { id: undefined, ...data };
     const { data: created, error: insertErr } = await insertPart(partData);
@@ -210,17 +215,22 @@ export default function AdminDashboard() {
       setSearch("");
       setSelectedCategory("All");
       addToast(`${created.name} added to inventory.`);
-      await logActivity({
-        user_name: "Mentor",
-        action: "add_part",
-        part_name: created.name,
-        part_id: created.id,
-        details: `Added new part: ${created.name}`,
-      });
-      return true;
+      try {
+        await logActivity({
+          user_name: "Mentor",
+          action: "add_part",
+          part_name: created.name,
+          part_id: created.id,
+          details: `Added new part: ${created.name}`,
+        });
+      } catch (e) {
+        console.error("logActivity:", e);
+      }
+      return { ok: true };
     }
-    addToast(insertErr || "Failed to add part.", "error");
-    return false;
+    const msg = insertErr || "Failed to add part.";
+    addToast(msg, "error");
+    return { ok: false, error: msg };
   };
 
   const handleDelete = async (id: string) => {
