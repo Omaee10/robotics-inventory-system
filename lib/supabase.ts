@@ -1,8 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { AccessCode, Drawer, Log, Part, Vendor } from "./types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+/**
+ * Vercel / CI runs `next build` without `.env.local`. Supabase's client throws if the
+ * URL is missing, which fails static generation. Placeholders let the build finish;
+ * set env vars on the host — API calls will not work until real values are present.
+ */
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+  "https://build-placeholder.supabase.co";
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || "build-placeholder-anon-key";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
