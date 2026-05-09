@@ -689,7 +689,7 @@ export default function AdminDashboard() {
             <div className="mb-6">
               <h2 className="text-xl font-bold text-slate-800">Vendor Management</h2>
               <p className="text-sm text-slate-500 mt-0.5">
-                Manage vendor names and base URLs. These appear as options in the "Add Part" modal so students can quickly find product images.
+                Manage vendor names and base URLs. These appear as options in the Add Part modal so students can quickly find product images.
               </p>
             </div>
 
