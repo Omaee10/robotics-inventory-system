@@ -30,6 +30,7 @@ export interface AccessCode {
 export interface Log {
   id: string;
   created_at: string;
+  program: Program;
   user_name: string;
   action: string;
   part_name: string;

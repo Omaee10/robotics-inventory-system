@@ -104,6 +104,7 @@ export default function StudentDashboard() {
     if (part && session) {
       const action = delta < 0 ? "take" : "add";
       await logActivity({
+        program: session.program,
         user_name: session.name,
         action,
         part_name: part.name,
@@ -133,6 +134,7 @@ export default function StudentDashboard() {
       try {
         if (session) {
           await logActivity({
+            program: session.program,
             user_name: session.name,
             action: "add_part",
             part_name: created.name,

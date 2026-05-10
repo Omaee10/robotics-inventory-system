@@ -64,6 +64,37 @@ function exportInventoryCSV(parts: Part[], drawers: Drawer[], program: string) {
   URL.revokeObjectURL(url);
 }
 
+function exportActivityLogCSV(logs: Log[], program: string) {
+  const headers = [
+    "Created At (UTC)",
+    "Program",
+    "User",
+    "Action",
+    "Part Name",
+    "Part ID",
+    "Details",
+  ];
+  const rows = logs.map((log) => [
+    log.created_at,
+    log.program.toUpperCase(),
+    log.user_name,
+    log.action,
+    log.part_name,
+    log.part_id ?? "",
+    log.details ?? "",
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `robotics-activity-log-${program}-${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -142,11 +173,12 @@ export default function AdminDashboard() {
   }, [sessionHydrated, session?.program, loadParts]);
 
   const loadLogs = useCallback(async () => {
+    if (!session?.program) return;
     setLogsLoading(true);
-    const data = await fetchLogs();
+    const data = await fetchLogs(session.program);
     if (data) setLogs(data);
     setLogsLoading(false);
-  }, []);
+  }, [session?.program]);
 
   const loadCodes = useCallback(async () => {
     setCodesLoading(true);
@@ -211,6 +243,7 @@ export default function AdminDashboard() {
       }
       try {
         await logActivity({
+          program: session!.program,
           user_name: "Mentor",
           action: "edit_part",
           part_name: data.name,
@@ -231,6 +264,7 @@ export default function AdminDashboard() {
       addToast(`${created.name} added to inventory.`);
       try {
         await logActivity({
+          program: session!.program,
           user_name: "Mentor",
           action: "add_part",
           part_name: created.name,
@@ -255,7 +289,14 @@ export default function AdminDashboard() {
       addToast("Failed to delete part.", "error");
       await loadParts();
     } else if (part) {
-      await logActivity({ user_name: "Mentor", action: "delete_part", part_name: part.name, part_id: id, details: `Deleted ${part.name}` });
+      await logActivity({
+        program: session!.program,
+        user_name: "Mentor",
+        action: "delete_part",
+        part_name: part.name,
+        part_id: id,
+        details: `Deleted ${part.name}`,
+      });
     }
   };
 
@@ -278,6 +319,7 @@ export default function AdminDashboard() {
     if (part) {
       const action = delta < 0 ? "take" : "add";
       await logActivity({
+        program: session!.program,
         user_name: "Mentor",
         action,
         part_name: part.name,
@@ -445,7 +487,12 @@ export default function AdminDashboard() {
               <StatCard label="Low Stock" value={stats.lowStock.length} icon="⚠️"
                 color={stats.lowStock.length > 0 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-700"} />
               <div className="rounded-2xl bg-black p-4 flex flex-col justify-between">
-                <span className="text-xs font-medium text-gray-400 mb-2">Export</span>
+                <div className="mb-2">
+                  <span className="text-xs font-medium text-gray-400 block">Export inventory</span>
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                    {session.program} only
+                  </span>
+                </div>
                 <button
                   onClick={() =>
                     exportInventoryCSV(parts, drawers, session.program)
@@ -587,22 +634,48 @@ export default function AdminDashboard() {
         {/* ── ACTIVITY LOG TAB ── */}
         {activeTab === "logs" && (
           <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
               <div>
                 <h2 className="text-lg font-bold text-slate-800">Activity Log</h2>
-                <p className="text-sm text-slate-500 mt-0.5">All inventory changes with who made them and when.</p>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Changes for{" "}
+                  <span
+                    className={`font-bold uppercase tracking-wide ${
+                      session.program === "ftc" ? "text-orange-600" : "text-slate-700"
+                    }`}
+                  >
+                    {session.program}
+                  </span>{" "}
+                  inventory only (separate from the other program).
+                </p>
               </div>
-              <button
-                onClick={loadLogs}
-                disabled={logsLoading}
-                className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-xl transition-colors disabled:opacity-50"
-              >
-                <svg className={`w-4 h-4 ${logsLoading ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                </svg>
-                Refresh
-              </button>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => exportActivityLogCSV(logs, session.program)}
+                  disabled={logs.length === 0 || logsLoading}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-black text-white hover:bg-gray-900 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Export log CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={loadLogs}
+                  disabled={logsLoading}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-xl transition-colors disabled:opacity-50"
+                >
+                  <svg className={`w-4 h-4 ${logsLoading ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                  Refresh
+                </button>
+              </div>
             </div>
 
             {logsLoading ? (

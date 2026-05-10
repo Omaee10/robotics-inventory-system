@@ -205,6 +205,7 @@ export async function logActivity(
   entry: Omit<Log, "id" | "created_at">
 ): Promise<void> {
   const { error } = await supabase.from("logs").insert({
+    program: entry.program,
     user_name: entry.user_name,
     action: entry.action,
     part_name: entry.part_name,
@@ -214,11 +215,36 @@ export async function logActivity(
   if (error) console.error("Supabase logActivity error:", error.message);
 }
 
-/** Fetch the 200 most-recent activity logs. */
-export async function fetchLogs(): Promise<Log[] | null> {
+interface DbLogRow {
+  id: string;
+  created_at: string;
+  program?: string | null;
+  user_name: string;
+  action: string;
+  part_name: string;
+  part_id: string | null;
+  details: string | null;
+}
+
+function mapDbLog(row: DbLogRow): Log {
+  return {
+    id: row.id,
+    created_at: row.created_at,
+    program: normalizeProgram(row.program),
+    user_name: row.user_name,
+    action: row.action,
+    part_name: row.part_name,
+    part_id: row.part_id,
+    details: row.details,
+  };
+}
+
+/** Fetch the 200 most-recent activity logs for one FIRST program. */
+export async function fetchLogs(program: Program): Promise<Log[] | null> {
   const { data, error } = await supabase
     .from("logs")
     .select("*")
+    .eq("program", program)
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -226,7 +252,7 @@ export async function fetchLogs(): Promise<Log[] | null> {
     console.error("Supabase fetchLogs error:", error.message);
     return null;
   }
-  return data as Log[];
+  return (data as DbLogRow[]).map(mapDbLog);
 }
 
 // ── Access Codes ───────────────────────────────────────────────────────────
