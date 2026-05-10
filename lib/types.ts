@@ -20,6 +20,12 @@ export interface Drawer {
   label: string;
 }
 
+/** User-defined part category / section (filters, Part modal). */
+export interface PartCategory {
+  id: string;
+  label: string;
+}
+
 export interface AccessCode {
   id: string;
   code: string;

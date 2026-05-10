@@ -50,8 +50,11 @@ export default function LandingPage() {
     const valid = await validateAccessCode(code);
     setLoading(false);
     if (valid) {
-      const program = pendingProgram ?? "frc";
-      setSession({ role: "mentor", name: "Mentor", program });
+      setSession({
+        role: "mentor",
+        name: "Mentor",
+        program: "frc",
+      });
       router.push("/admin");
     } else {
       setError("Invalid code. Please try again.");
@@ -114,7 +117,8 @@ export default function LandingPage() {
                   type="button"
                   onClick={() => {
                     setPendingRole("mentor");
-                    setStep("program");
+                    setPendingProgram(null);
+                    setStep("mentor-code");
                     setError("");
                     setCode("");
                   }}
@@ -217,7 +221,7 @@ export default function LandingPage() {
             <form onSubmit={handleMentorEnter} className="p-8">
               <button
                 type="button"
-                onClick={goBackToProgram}
+                onClick={goBackToRole}
                 className="text-xs text-slate-400 hover:text-slate-600 mb-5 flex items-center gap-1 transition-colors"
               >
                 ← Back
@@ -226,9 +230,7 @@ export default function LandingPage() {
                 <span className="text-3xl mb-3 block">🔑</span>
                 <h2 className="text-xl font-bold text-slate-800 mb-1">Mentor Access</h2>
                 <p className="text-slate-500 text-sm">
-                  <span className="font-semibold text-slate-700 uppercase">{pendingProgram}</span>
-                  {" · "}
-                  Enter your 6-digit access code to open the admin dashboard.
+                  Enter your 6-digit code. You&apos;ll choose FRC or FTC admin next.
                 </p>
               </div>
               <div className="flex flex-col gap-4">

@@ -17,7 +17,10 @@ function normalizeStoredSession(raw: unknown): UserSession | null {
   const name = o.name;
   if (role !== "student" && role !== "mentor") return null;
   if (typeof name !== "string" || !name.trim()) return null;
-  const program: Program = o.program === "ftc" ? "ftc" : "frc";
+  const rawProg = o.program;
+  const p =
+    typeof rawProg === "string" ? rawProg.trim().toLowerCase() : "";
+  const program: Program = p === "ftc" ? "ftc" : "frc";
   return { role, name: name.trim(), program };
 }
 

@@ -147,12 +147,14 @@ export const INITIAL_PARTS: Part[] = [
   },
 ];
 
-export const CATEGORIES = [
-  "All",
+/** Default labels seeded in `supabase/11_categories.sql`; used if DB fetch fails. */
+export const FALLBACK_PART_CATEGORY_LABELS = [
   "Motors",
   "Electronics",
   "Sensors",
   "Pneumatics",
   "Drive",
   "Vision",
-];
+] as const;
+
+export const CATEGORIES = ["All", ...FALLBACK_PART_CATEGORY_LABELS] as const;

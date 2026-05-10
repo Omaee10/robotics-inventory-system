@@ -25,6 +25,26 @@ const CATEGORY_COLORS: Record<string, string> = {
   Vision: "bg-pink-100 text-pink-700",
 };
 
+const CATEGORY_COLOR_FALLBACK_PALETTE = [
+  "bg-amber-100 text-amber-800",
+  "bg-indigo-100 text-indigo-800",
+  "bg-teal-100 text-teal-800",
+  "bg-rose-100 text-rose-800",
+  "bg-lime-100 text-lime-800",
+  "bg-fuchsia-100 text-fuchsia-800",
+  "bg-sky-100 text-sky-800",
+  "bg-violet-100 text-violet-800",
+];
+
+function categoryColorClass(label: string): string {
+  if (CATEGORY_COLORS[label]) return CATEGORY_COLORS[label];
+  let h = 0;
+  for (let i = 0; i < label.length; i++) {
+    h = (h * 31 + label.charCodeAt(i)) >>> 0;
+  }
+  return CATEGORY_COLOR_FALLBACK_PALETTE[h % CATEGORY_COLOR_FALLBACK_PALETTE.length];
+}
+
 export default function PartCard({
   part,
   drawers,
@@ -46,8 +66,7 @@ export default function PartCard({
   }, [part.imageUrl]);
 
   const isLow = part.quantity <= part.minQuantity;
-  const categoryColor =
-    CATEGORY_COLORS[part.category] ?? "bg-slate-100 text-slate-700";
+  const categoryColor = categoryColorClass(part.category);
 
   const drawerLabel =
     drawers.find((d) => d.id === part.drawerId)?.label ?? part.drawerId;

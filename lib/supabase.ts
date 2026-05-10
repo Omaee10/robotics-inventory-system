@@ -1,13 +1,47 @@
 import { createClient } from "@supabase/supabase-js";
 import type { PostgrestError } from "@supabase/supabase-js";
-import { AccessCode, Drawer, Log, Part, Program, Vendor } from "./types";
+import { AccessCode, Drawer, Log, Part, PartCategory, Program, Vendor } from "./types";
 
-function normalizeProgram(value: string | null | undefined): Program {
-  return value === "ftc" ? "ftc" : "frc";
+export function normalizeProgram(value: string | null | undefined): Program {
+  if (value == null || typeof value !== "string") return "frc";
+  const v = value.trim().toLowerCase();
+  return v === "ftc" ? "ftc" : "frc";
 }
 
 function formatSupabaseError(error: PostgrestError): string {
   return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+}
+
+/** True when DB/schema does not have `logs.program` yet (migration 09 not applied). */
+function isLogsProgramColumnMissingError(error: PostgrestError): boolean {
+  const msg = formatSupabaseError(error).toLowerCase();
+  if (error.code === "42703") return true;
+  if (error.code === "PGRST204" && msg.includes("program")) return true;
+  if (msg.includes("schema cache") && msg.includes("program")) return true;
+  if (
+    msg.includes("program") &&
+    (msg.includes("does not exist") ||
+      msg.includes("unknown column") ||
+      msg.includes("could not find the"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** When `logs.program` column is missing, we prefix details with `[frc]` / `[ftc]`. */
+function parseProgramFromBracketDetails(
+  details: string | null | undefined
+): Program | null {
+  if (!details || typeof details !== "string") return null;
+  const m = details.match(/^\[(frc|ftc)\]\s*/i);
+  if (!m) return null;
+  return m[1].toLowerCase() === "ftc" ? "ftc" : "frc";
+}
+
+/** Never mix programs in the UI: filter after fetch (fixes legacy unscoped queries). */
+function filterLogsByProgram(rows: Log[], program: Program): Log[] {
+  return rows.filter((log) => log.program === program);
 }
 
 /**
@@ -198,21 +232,83 @@ export async function deleteDrawer(
   return { error: null };
 }
 
+/** Fetch all part categories ordered by label. */
+export async function fetchCategories(): Promise<PartCategory[] | null> {
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id, label")
+    .order("label", { ascending: true });
+
+  if (error) {
+    console.error("Supabase fetchCategories error:", error.message);
+    return null;
+  }
+  return data as PartCategory[];
+}
+
+/** Insert a new category and return the persisted record. */
+export async function insertCategory(
+  label: string
+): Promise<{ data: PartCategory | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from("categories")
+    .insert({ label })
+    .select("id, label")
+    .single();
+
+  if (error) {
+    console.error("Supabase insertCategory error:", error.message);
+    return { data: null, error: error.message };
+  }
+  return { data: data as PartCategory, error: null };
+}
+
+/** Delete a category by id. */
+export async function deleteCategory(
+  id: string
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from("categories").delete().eq("id", id);
+
+  if (error) {
+    console.error("Supabase deleteCategory error:", error.message);
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
 // ── Activity Logs ──────────────────────────────────────────────────────────
 
-/** Log an activity (fire-and-forget; errors are silent so they never block UI). */
+/** Log an activity. Returns false if the insert failed (e.g. schema / RLS). */
 export async function logActivity(
   entry: Omit<Log, "id" | "created_at">
-): Promise<void> {
-  const { error } = await supabase.from("logs").insert({
-    program: entry.program,
+): Promise<boolean> {
+  const prog = normalizeProgram(entry.program);
+  const row = {
+    program: prog,
     user_name: entry.user_name,
     action: entry.action,
     part_name: entry.part_name,
     part_id: entry.part_id ?? null,
     details: entry.details ?? null,
-  });
-  if (error) console.error("Supabase logActivity error:", error.message);
+  };
+  let { error } = await supabase.from("logs").insert(row);
+  if (error && isLogsProgramColumnMissingError(error)) {
+    const { program: _p, ...rest } = row;
+    const tag = `[${prog}]`;
+    const legacyDetails =
+      rest.details && rest.details.trim()
+        ? `${tag} ${rest.details}`
+        : tag;
+    ({ error } = await supabase.from("logs").insert({
+      ...rest,
+      details: legacyDetails,
+    }));
+  }
+  if (error) {
+    console.error("Supabase logActivity error:", formatSupabaseError(error));
+    return false;
+  }
+  return true;
 }
 
 interface DbLogRow {
@@ -227,10 +323,17 @@ interface DbLogRow {
 }
 
 function mapDbLog(row: DbLogRow): Log {
+  const col = row.program;
+  let program: Program;
+  if (col != null && String(col).trim() !== "") {
+    program = normalizeProgram(col);
+  } else {
+    program = parseProgramFromBracketDetails(row.details) ?? "frc";
+  }
   return {
     id: row.id,
     created_at: row.created_at,
-    program: normalizeProgram(row.program),
+    program,
     user_name: row.user_name,
     action: row.action,
     part_name: row.part_name,
@@ -241,18 +344,61 @@ function mapDbLog(row: DbLogRow): Log {
 
 /** Fetch the 200 most-recent activity logs for one FIRST program. */
 export async function fetchLogs(program: Program): Promise<Log[] | null> {
-  const { data, error } = await supabase
+  const scoped = await supabase
     .from("logs")
     .select("*")
     .eq("program", program)
     .order("created_at", { ascending: false })
     .limit(200);
 
-  if (error) {
-    console.error("Supabase fetchLogs error:", error.message);
-    return null;
+  if (!scoped.error) {
+    const rows = (scoped.data as DbLogRow[]).map(mapDbLog);
+    return filterLogsByProgram(rows, program).slice(0, 200);
   }
-  return (data as DbLogRow[]).map(mapDbLog);
+
+  if (isLogsProgramColumnMissingError(scoped.error)) {
+    const legacy = await supabase
+      .from("logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (legacy.error) {
+      console.error("Supabase fetchLogs error:", formatSupabaseError(legacy.error));
+      return null;
+    }
+    const rows = (legacy.data as DbLogRow[]).map(mapDbLog);
+    return filterLogsByProgram(rows, program).slice(0, 200);
+  }
+
+  console.error("Supabase fetchLogs error:", formatSupabaseError(scoped.error));
+  return null;
+}
+
+/** Delete all activity log rows for one program (column `program` and/or legacy `[frc]` / `[ftc]` details prefix). */
+export async function deleteLogsForProgram(
+  program: Program
+): Promise<{ error: string | null }> {
+  const likePattern = `[${program}]%`;
+
+  const eqDelete = await supabase.from("logs").delete().eq("program", program);
+  if (!eqDelete.error) {
+    const legacyWipe = await supabase.from("logs").delete().like("details", likePattern);
+    if (legacyWipe.error) {
+      return { error: formatSupabaseError(legacyWipe.error) };
+    }
+    return { error: null };
+  }
+
+  if (isLogsProgramColumnMissingError(eqDelete.error)) {
+    const legacy = await supabase.from("logs").delete().like("details", likePattern);
+    if (legacy.error) {
+      return { error: formatSupabaseError(legacy.error) };
+    }
+    return { error: null };
+  }
+
+  return { error: formatSupabaseError(eqDelete.error) };
 }
 
 // ── Access Codes ───────────────────────────────────────────────────────────

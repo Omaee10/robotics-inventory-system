@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Drawer, Part, PartSaveResult, Program, Vendor } from "@/lib/types";
-import { CATEGORIES } from "@/lib/data";
+import { FALLBACK_PART_CATEGORY_LABELS } from "@/lib/data";
 import { useToast } from "@/lib/toastContext";
 
 interface PartModalProps {
@@ -13,6 +13,8 @@ interface PartModalProps {
   ) => PartSaveResult | Promise<PartSaveResult>;
   editPart?: Part | null;
   drawers: Drawer[];
+  /** Section / category labels (from Manage sections + database). */
+  categoryOptions: string[];
   vendors?: Vendor[];
   /** Session inventory program — used for new parts and when program is read-only. */
   inventoryProgram: Program;
@@ -38,6 +40,7 @@ export default function PartModal({
   onSave,
   editPart,
   drawers,
+  categoryOptions,
   vendors = [],
   inventoryProgram,
   allowProgramEdit = false,
@@ -50,6 +53,17 @@ export default function PartModal({
   const [productUrl, setProductUrl] = useState("");
   const [imgSearching, setImgSearching] = useState(false);
   const [imgMsg, setImgMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const selectCategoryOptions = useMemo(() => {
+    const labels =
+      categoryOptions.length > 0
+        ? [...categoryOptions]
+        : [...FALLBACK_PART_CATEGORY_LABELS];
+    if (form.category && !labels.includes(form.category)) {
+      labels.push(form.category);
+    }
+    return labels.sort((a, b) => a.localeCompare(b));
+  }, [categoryOptions, form.category]);
 
   const scrapeImage = async (url: string) => {
     if (!url.trim().startsWith("http")) return;
@@ -127,13 +141,18 @@ export default function PartModal({
         minQuantity: editPart.minQuantity,
       });
     } else {
+      const defaultCat =
+        (categoryOptions[0] as string | undefined) ??
+        FALLBACK_PART_CATEGORY_LABELS[0] ??
+        "Misc";
       setForm({
         ...EMPTY_FORM,
+        category: defaultCat,
         drawerId: drawers[0]?.id ?? "",
         program: inventoryProgram,
       });
     }
-  }, [editPart, isOpen, drawers, inventoryProgram]);
+  }, [editPart, isOpen, drawers, inventoryProgram, categoryOptions]);
 
   if (!isOpen) return null;
 
@@ -205,7 +224,6 @@ export default function PartModal({
     }
   };
 
-  const categories = CATEGORIES.filter((c) => c !== "All");
   const selectedVendor = vendors.find((v) => v.id === selectedVendorId);
 
   return (
@@ -306,17 +324,17 @@ export default function PartModal({
             )}
           </div>
 
-          {/* Category */}
+          {/* Section (category) */}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">
-              Category
+              Section
             </label>
             <select
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
             >
-              {categories.map((cat) => (
+              {selectCategoryOptions.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
                 </option>

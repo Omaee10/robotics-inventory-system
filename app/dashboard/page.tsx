@@ -6,8 +6,8 @@ import Image from "next/image";
 import PartCard from "@/components/PartCard";
 import PartModal from "@/components/PartModal";
 import DrawerModal from "@/components/DrawerModal";
-import { Drawer, Part, PartSaveResult, Vendor } from "@/lib/types";
-import { CATEGORIES } from "@/lib/data";
+import { Drawer, Part, PartCategory, PartSaveResult, Vendor } from "@/lib/types";
+import { FALLBACK_PART_CATEGORY_LABELS } from "@/lib/data";
 import {
   fetchDrawers,
   fetchParts,
@@ -15,6 +15,8 @@ import {
   updatePartQuantity,
   logActivity,
   fetchVendors,
+  fetchCategories,
+  normalizeProgram,
 } from "@/lib/supabase";
 import { useToast } from "@/lib/toastContext";
 import { useSession } from "@/lib/sessionContext";
@@ -32,6 +34,7 @@ export default function StudentDashboard() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDrawerModalOpen, setIsDrawerModalOpen] = useState(false);
+  const [categories, setCategories] = useState<PartCategory[]>([]);
 
   useEffect(() => {
     if (!sessionHydrated) return;
@@ -56,10 +59,30 @@ export default function StudentDashboard() {
     fetchDrawers().then((data) => {
       if (data) setDrawers(data);
     });
+    fetchCategories().then((data) => {
+      if (data) setCategories(data);
+    });
     fetchVendors().then((data) => {
       if (data) setVendors(data);
     });
   }, [sessionHydrated, session?.program, loadParts]);
+
+  const categoryLabels = useMemo(() => {
+    if (categories.length > 0) return categories.map((c) => c.label);
+    return [...FALLBACK_PART_CATEGORY_LABELS];
+  }, [categories]);
+
+  const sectionFilterChips = useMemo(
+    () => ["All", ...categoryLabels],
+    [categoryLabels]
+  );
+
+  useEffect(() => {
+    if (selectedCategory === "All") return;
+    if (!categoryLabels.includes(selectedCategory)) {
+      setSelectedCategory("All");
+    }
+  }, [categoryLabels, selectedCategory]);
 
   const filteredParts = useMemo(() => {
     const q = search.toLowerCase();
@@ -103,14 +126,20 @@ export default function StudentDashboard() {
 
     if (part && session) {
       const action = delta < 0 ? "take" : "add";
-      await logActivity({
-        program: session.program,
+      const okLog = await logActivity({
+        program: normalizeProgram(part.program),
         user_name: session.name,
         action,
         part_name: part.name,
         part_id: id,
         details: `${action === "take" ? "Took" : "Added"} ${Math.abs(delta)} × ${part.name}`,
       });
+      if (!okLog) {
+        addToast(
+          "Quantity saved, but activity log failed. Ask a mentor to check Supabase (migration 09).",
+          "error"
+        );
+      }
     }
   };
 
@@ -133,14 +162,20 @@ export default function StudentDashboard() {
       addToast(`${created.name} added to inventory.`);
       try {
         if (session) {
-          await logActivity({
-            program: session.program,
+          const okLog = await logActivity({
+            program: normalizeProgram(created.program),
             user_name: session.name,
             action: "add_part",
             part_name: created.name,
             part_id: created.id,
             details: `Added new part: ${created.name}`,
           });
+          if (!okLog) {
+            addToast(
+              "Part added, but activity log failed. Ask a mentor to check Supabase (migration 09).",
+              "error"
+            );
+          }
         }
       } catch (e) {
         console.error("logActivity:", e);
@@ -264,7 +299,7 @@ export default function StudentDashboard() {
         </div>
 
         <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
-          {CATEGORIES.map((cat) => (
+          {sectionFilterChips.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -338,6 +373,7 @@ export default function StudentDashboard() {
         onSave={handleSave}
         editPart={null}
         drawers={drawers}
+        categoryOptions={categoryLabels}
         vendors={vendors}
         inventoryProgram={session.program}
       />
