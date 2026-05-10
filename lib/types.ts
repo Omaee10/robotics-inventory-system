@@ -1,8 +1,12 @@
+/** FIRST robotics program — inventory is scoped per program. */
+export type Program = "frc" | "ftc";
+
 export interface Part {
   id: string;
   name: string;
   /** Supplier / vendor name (e.g. REV Robotics). */
   company: string;
+  program: Program;
   category: string;
   quantity: number;
   drawerId: string;
@@ -45,6 +49,7 @@ export type UserRole = "student" | "mentor";
 export interface UserSession {
   role: UserRole;
   name: string;
+  program: Program;
 }
 
 /** Result of saving a part from PartModal (inline + toast messaging). */

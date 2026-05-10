@@ -31,10 +31,11 @@ import { useSession } from "@/lib/sessionContext";
 type Tab = "inventory" | "logs" | "codes" | "vendors";
 
 // ── CSV export helper ───────────────────────────────────────────────────────
-function exportInventoryCSV(parts: Part[], drawers: Drawer[]) {
+function exportInventoryCSV(parts: Part[], drawers: Drawer[], program: string) {
   const headers = [
     "Name",
     "Company",
+    "Program",
     "Category",
     "Drawer",
     "Quantity",
@@ -44,6 +45,7 @@ function exportInventoryCSV(parts: Part[], drawers: Drawer[]) {
   const rows = parts.map((p) => [
     p.name,
     p.company,
+    p.program.toUpperCase(),
     p.category,
     drawers.find((d) => d.id === p.drawerId)?.label ?? p.drawerId,
     String(p.quantity),
@@ -57,7 +59,7 @@ function exportInventoryCSV(parts: Part[], drawers: Drawer[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `robotics-inventory-${new Date().toISOString().split("T")[0]}.csv`;
+  a.download = `robotics-inventory-${program}-${new Date().toISOString().split("T")[0]}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -120,18 +122,24 @@ export default function AdminDashboard() {
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadParts = useCallback(async () => {
+    if (!session?.program) return;
     setLoading(true);
-    const data = await fetchParts();
+    const data = await fetchParts(session.program);
     if (data !== null) setParts(data);
     else addToast("Could not load parts.", "error");
     setLoading(false);
-  }, [addToast]);
+  }, [session?.program, addToast]);
 
   useEffect(() => {
+    if (!sessionHydrated || !session?.program) return;
     loadParts();
-    fetchDrawers().then((data) => { if (data) setDrawers(data); });
-    fetchVendors().then((data) => { if (data) setVendors(data); });
-  }, [loadParts]);
+    fetchDrawers().then((data) => {
+      if (data) setDrawers(data);
+    });
+    fetchVendors().then((data) => {
+      if (data) setVendors(data);
+    });
+  }, [sessionHydrated, session?.program, loadParts]);
 
   const loadLogs = useCallback(async () => {
     setLogsLoading(true);
@@ -185,9 +193,15 @@ export default function AdminDashboard() {
     data: Omit<Part, "id"> & { id?: string }
   ): Promise<PartSaveResult> => {
     if (data.id) {
-      setParts((prev) =>
-        prev.map((p) => (p.id === data.id ? ({ ...data, id: data.id! } as Part) : p))
-      );
+      const prog = session?.program;
+      setParts((prev) => {
+        if (prog && data.program !== prog) {
+          return prev.filter((p) => p.id !== data.id);
+        }
+        return prev.map((p) =>
+          p.id === data.id ? ({ ...data, id: data.id! } as Part) : p
+        );
+      });
       const ok = await updatePart(data.id, data);
       if (!ok) {
         const msg = "Failed to save changes. Check Supabase or your connection.";
@@ -382,6 +396,15 @@ export default function AdminDashboard() {
           </nav>
 
           <div className="ml-auto flex items-center gap-3">
+            <span
+              className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                session.program === "ftc"
+                  ? "bg-orange-500/20 text-orange-200 border-orange-400/40"
+                  : "bg-white/10 text-gray-200 border-white/20"
+              }`}
+            >
+              {session.program}
+            </span>
             <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-900/40 border border-amber-700/50 px-3 py-1.5 rounded-full font-medium">
               🔑 Mentor
             </span>
@@ -424,7 +447,9 @@ export default function AdminDashboard() {
               <div className="rounded-2xl bg-black p-4 flex flex-col justify-between">
                 <span className="text-xs font-medium text-gray-400 mb-2">Export</span>
                 <button
-                  onClick={() => exportInventoryCSV(parts, drawers)}
+                  onClick={() =>
+                    exportInventoryCSV(parts, drawers, session.program)
+                  }
                   className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-100 text-black text-xs font-bold rounded-xl transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
@@ -847,6 +872,8 @@ export default function AdminDashboard() {
         editPart={editPart}
         drawers={drawers}
         vendors={vendors}
+        inventoryProgram={session.program}
+        allowProgramEdit={!!editPart}
       />
       <DrawerModal
         isOpen={isDrawerModalOpen}

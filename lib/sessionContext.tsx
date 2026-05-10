@@ -8,7 +8,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { UserSession } from "./types";
+import type { Program, UserSession } from "./types";
+
+function normalizeStoredSession(raw: unknown): UserSession | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const role = o.role;
+  const name = o.name;
+  if (role !== "student" && role !== "mentor") return null;
+  if (typeof name !== "string" || !name.trim()) return null;
+  const program: Program = o.program === "ftc" ? "ftc" : "frc";
+  return { role, name: name.trim(), program };
+}
 
 interface SessionContextValue {
   session: UserSession | null;
@@ -34,7 +45,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(SESSION_KEY);
-      if (stored) setSessionState(JSON.parse(stored));
+      if (stored) {
+        const parsed = normalizeStoredSession(JSON.parse(stored));
+        if (parsed) setSessionState(parsed);
+      }
     } catch {
       // ignore parse errors
     } finally {

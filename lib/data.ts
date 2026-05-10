@@ -11,6 +11,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1e3a8a/ffffff?text=Encoder",
     description: "Magnetic encoder for precise shaft rotation measurement.",
     minQuantity: 4,
+    program: "frc",
   },
   {
     id: "2",
@@ -22,6 +23,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1d4ed8/ffffff?text=NEO+Motor",
     description: "550W brushless motor for high-performance drivetrains.",
     minQuantity: 4,
+    program: "frc",
   },
   {
     id: "3",
@@ -33,6 +35,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/2563eb/ffffff?text=SPARK+MAX",
     description: "Motor controller for REV NEO and CIM motors.",
     minQuantity: 4,
+    program: "frc",
   },
   {
     id: "4",
@@ -44,6 +47,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1e40af/ffffff?text=CIM+Motor",
     description: "Standard FRC CIM motor, 2.7 HP at stall.",
     minQuantity: 6,
+    program: "frc",
   },
   {
     id: "5",
@@ -55,6 +59,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/3b82f6/ffffff?text=Cylinder",
     description: "Double-acting pneumatic cylinder, 1.5 inch bore.",
     minQuantity: 2,
+    program: "frc",
   },
   {
     id: "6",
@@ -66,6 +71,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1e3a8a/ffffff?text=roboRIO",
     description: "NI FRC robot controller, main brain of the robot.",
     minQuantity: 1,
+    program: "frc",
   },
   {
     id: "7",
@@ -77,6 +83,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1d4ed8/ffffff?text=Swerve+Module",
     description: "SDS MK4i swerve drive module with Falcon 500.",
     minQuantity: 4,
+    program: "frc",
   },
   {
     id: "8",
@@ -88,6 +95,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/2563eb/ffffff?text=Limelight",
     description: "Smart camera for vision tracking and AprilTag detection.",
     minQuantity: 1,
+    program: "frc",
   },
   {
     id: "9",
@@ -99,6 +107,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1e40af/ffffff?text=PDH",
     description: "Smart power distribution hub with 20 channels.",
     minQuantity: 1,
+    program: "frc",
   },
   {
     id: "10",
@@ -110,6 +119,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/3b82f6/ffffff?text=Victor+SPX",
     description: "CTRE motor controller compatible with CAN bus.",
     minQuantity: 4,
+    program: "frc",
   },
   {
     id: "11",
@@ -121,6 +131,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1e3a8a/ffffff?text=Falcon+500",
     description: "Integrated Talon FX controller brushless motor.",
     minQuantity: 4,
+    program: "frc",
   },
   {
     id: "12",
@@ -132,6 +143,7 @@ export const INITIAL_PARTS: Part[] = [
     imageUrl: "https://placehold.co/400x300/1d4ed8/ffffff?text=NavX2",
     description: "9-axis IMU for field-centric swerve drive.",
     minQuantity: 1,
+    program: "frc",
   },
 ];
 

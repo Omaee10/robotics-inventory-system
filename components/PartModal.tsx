@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Drawer, Part, PartSaveResult, Vendor } from "@/lib/types";
+import { Drawer, Part, PartSaveResult, Program, Vendor } from "@/lib/types";
 import { CATEGORIES } from "@/lib/data";
 import { useToast } from "@/lib/toastContext";
 
@@ -14,11 +14,16 @@ interface PartModalProps {
   editPart?: Part | null;
   drawers: Drawer[];
   vendors?: Vendor[];
+  /** Session inventory program — used for new parts and when program is read-only. */
+  inventoryProgram: Program;
+  /** Admin editing an existing part: allow changing program (e.g. move between FRC/FTC). */
+  allowProgramEdit?: boolean;
 }
 
 const EMPTY_FORM: Omit<Part, "id"> = {
   name: "",
   company: "",
+  program: "frc",
   category: "Electronics",
   quantity: 1,
   drawerId: "",
@@ -34,6 +39,8 @@ export default function PartModal({
   editPart,
   drawers,
   vendors = [],
+  inventoryProgram,
+  allowProgramEdit = false,
 }: PartModalProps) {
   const { addToast } = useToast();
   const [form, setForm] = useState<Omit<Part, "id">>(EMPTY_FORM);
@@ -111,6 +118,7 @@ export default function PartModal({
       setForm({
         name: editPart.name,
         company: editPart.company,
+        program: editPart.program,
         category: editPart.category,
         quantity: editPart.quantity,
         drawerId: editPart.drawerId,
@@ -119,9 +127,13 @@ export default function PartModal({
         minQuantity: editPart.minQuantity,
       });
     } else {
-      setForm({ ...EMPTY_FORM, drawerId: drawers[0]?.id ?? "" });
+      setForm({
+        ...EMPTY_FORM,
+        drawerId: drawers[0]?.id ?? "",
+        program: inventoryProgram,
+      });
     }
-  }, [editPart, isOpen, drawers]);
+  }, [editPart, isOpen, drawers, inventoryProgram]);
 
   if (!isOpen) return null;
 
@@ -166,6 +178,7 @@ export default function PartModal({
 
     const payload = {
       ...form,
+      program: allowProgramEdit ? form.program : inventoryProgram,
       id: editPart?.id,
       imageUrl:
         trimmedImg ||
@@ -259,6 +272,38 @@ export default function PartModal({
             <p className="text-[11px] text-slate-400">
               Choosing a vendor below fills this automatically; you can edit it.
             </p>
+          </div>
+
+          {/* Program */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">
+              Program
+            </label>
+            {!allowProgramEdit ? (
+              <p className="text-sm text-slate-600 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <span className="font-bold uppercase tracking-wide">
+                  {inventoryProgram}
+                </span>
+                <span className="text-slate-400 font-normal">
+                  {" "}
+                  — parts are saved under this program&apos;s inventory.
+                </span>
+              </p>
+            ) : (
+              <select
+                value={form.program}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    program: e.target.value === "ftc" ? "ftc" : "frc",
+                  })
+                }
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
+              >
+                <option value="frc">FRC — FIRST Robotics Competition</option>
+                <option value="ftc">FTC — FIRST Tech Challenge</option>
+              </select>
+            )}
           </div>
 
           {/* Category */}

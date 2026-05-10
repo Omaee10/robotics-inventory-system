@@ -39,21 +39,27 @@ export default function StudentDashboard() {
   }, [session, sessionHydrated, router]);
 
   const loadParts = useCallback(async () => {
+    if (!session?.program) return;
     setLoading(true);
-    const data = await fetchParts();
+    const data = await fetchParts(session.program);
     if (data !== null) {
       setParts(data);
     } else {
       addToast("Could not load parts from the database.", "error");
     }
     setLoading(false);
-  }, [addToast]);
+  }, [session?.program, addToast]);
 
   useEffect(() => {
+    if (!sessionHydrated || !session?.program) return;
     loadParts();
-    fetchDrawers().then((data) => { if (data) setDrawers(data); });
-    fetchVendors().then((data) => { if (data) setVendors(data); });
-  }, [loadParts]);
+    fetchDrawers().then((data) => {
+      if (data) setDrawers(data);
+    });
+    fetchVendors().then((data) => {
+      if (data) setVendors(data);
+    });
+  }, [sessionHydrated, session?.program, loadParts]);
 
   const filteredParts = useMemo(() => {
     const q = search.toLowerCase();
@@ -110,10 +116,14 @@ export default function StudentDashboard() {
   const handleSave = async (
     data: Omit<Part, "id"> & { id?: string }
   ): Promise<PartSaveResult> => {
+    if (!session) {
+      return { ok: false, error: "Not signed in." };
+    }
     if (data.id) {
       return { ok: false, error: "Editing is not available in student view." };
     }
-    const { id: _ignored, ...partData } = { id: undefined, ...data };
+    const { id: _ignored, ...rest } = { id: undefined, ...data };
+    const partData = { ...rest, program: session.program };
     const { data: created, error } = await insertPart(partData);
     if (created) {
       setParts((prev) => [created, ...prev]);
@@ -172,6 +182,15 @@ export default function StudentDashboard() {
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-gray-700 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full font-medium">
               🎓 {session.name}
+            </span>
+            <span
+              className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                session.program === "ftc"
+                  ? "bg-orange-50 text-orange-800 border-orange-200"
+                  : "bg-slate-100 text-slate-700 border-slate-200"
+              }`}
+            >
+              {session.program}
             </span>
             {loading ? (
               <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
@@ -318,6 +337,7 @@ export default function StudentDashboard() {
         editPart={null}
         drawers={drawers}
         vendors={vendors}
+        inventoryProgram={session.program}
       />
       <DrawerModal
         isOpen={isDrawerModalOpen}

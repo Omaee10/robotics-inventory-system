@@ -1,6 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import type { PostgrestError } from "@supabase/supabase-js";
-import { AccessCode, Drawer, Log, Part, Vendor } from "./types";
+import { AccessCode, Drawer, Log, Part, Program, Vendor } from "./types";
+
+function normalizeProgram(value: string | null | undefined): Program {
+  return value === "ftc" ? "ftc" : "frc";
+}
 
 function formatSupabaseError(error: PostgrestError): string {
   return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
@@ -36,6 +40,7 @@ interface DbPart {
   id: string;
   name: string;
   company?: string | null;
+  program?: string | null;
   category: string;
   quantity: number;
   drawer_id: string;
@@ -49,6 +54,7 @@ function mapDbPart(row: DbPart): Part {
     id: row.id,
     name: row.name,
     company: row.company ?? "",
+    program: normalizeProgram(row.program),
     category: row.category,
     quantity: row.quantity,
     drawerId: row.drawer_id,
@@ -62,6 +68,7 @@ function partToDb(part: Omit<Part, "id">): Omit<DbPart, "id"> {
   return {
     name: part.name,
     company: part.company.trim() || "",
+    program: part.program,
     category: part.category,
     quantity: part.quantity,
     drawer_id: part.drawerId,
@@ -71,10 +78,11 @@ function partToDb(part: Omit<Part, "id">): Omit<DbPart, "id"> {
   };
 }
 
-export async function fetchParts(): Promise<Part[] | null> {
+export async function fetchParts(program: Program): Promise<Part[] | null> {
   const { data, error } = await supabase
     .from("parts")
     .select("*")
+    .eq("program", program)
     .order("created_at", { ascending: false });
 
   if (error) {

@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useSession } from "@/lib/sessionContext";
 import { validateAccessCode } from "@/lib/supabase";
+import type { Program, UserRole } from "@/lib/types";
 
-type Step = "role" | "student-name" | "mentor-code";
+type Step = "role" | "program" | "student-name" | "mentor-code";
 
 export default function LandingPage() {
   const { session, sessionHydrated, setSession } = useSession();
   const router = useRouter();
   const [step, setStep] = useState<Step>("role");
+  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
+  const [pendingProgram, setPendingProgram] = useState<Program | null>(null);
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -27,8 +30,12 @@ export default function LandingPage() {
   const handleStudentEnter = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed) { setError("Please enter your name."); return; }
-    setSession({ role: "student", name: trimmed });
+    if (!trimmed) {
+      setError("Please enter your name.");
+      return;
+    }
+    const program = pendingProgram ?? "frc";
+    setSession({ role: "student", name: trimmed, program });
     router.push("/dashboard");
   };
 
@@ -43,11 +50,29 @@ export default function LandingPage() {
     const valid = await validateAccessCode(code);
     setLoading(false);
     if (valid) {
-      setSession({ role: "mentor", name: "Mentor" });
+      const program = pendingProgram ?? "frc";
+      setSession({ role: "mentor", name: "Mentor", program });
       router.push("/admin");
     } else {
       setError("Invalid code. Please try again.");
     }
+  };
+
+  const goBackToRole = () => {
+    setStep("role");
+    setPendingRole(null);
+    setPendingProgram(null);
+    setError("");
+    setName("");
+    setCode("");
+  };
+
+  const goBackToProgram = () => {
+    setStep("program");
+    setPendingProgram(null);
+    setError("");
+    setName("");
+    setCode("");
   };
 
   return (
@@ -74,14 +99,25 @@ export default function LandingPage() {
               <p className="text-slate-500 text-sm text-center mb-8">Who are you entering as?</p>
               <div className="flex flex-col gap-3">
                 <button
-                  onClick={() => { setStep("student-name"); setError(""); }}
+                  type="button"
+                  onClick={() => {
+                    setPendingRole("student");
+                    setStep("program");
+                    setError("");
+                  }}
                   className="w-full py-4 rounded-2xl bg-black hover:bg-gray-900 text-white font-bold text-base transition-colors shadow-sm flex items-center justify-center gap-3 border border-gray-200"
                 >
                   <span className="text-2xl">🎓</span>
                   Student
                 </button>
                 <button
-                  onClick={() => { setStep("mentor-code"); setError(""); setCode(""); }}
+                  type="button"
+                  onClick={() => {
+                    setPendingRole("mentor");
+                    setStep("program");
+                    setError("");
+                    setCode("");
+                  }}
                   className="w-full py-4 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold text-base transition-colors shadow-sm flex items-center justify-center gap-3 border border-gray-200"
                 >
                   <span className="text-2xl">🔑</span>
@@ -91,11 +127,56 @@ export default function LandingPage() {
             </div>
           )}
 
+          {step === "program" && pendingRole && (
+            <div className="p-8">
+              <button
+                type="button"
+                onClick={goBackToRole}
+                className="text-xs text-slate-400 hover:text-slate-600 mb-5 flex items-center gap-1 transition-colors"
+              >
+                ← Back
+              </button>
+              <div className="mb-6">
+                <span className="text-3xl mb-3 block">{pendingRole === "student" ? "🎓" : "🔑"}</span>
+                <h2 className="text-xl font-bold text-slate-800 mb-1">Choose program</h2>
+                <p className="text-slate-500 text-sm">
+                  Inventory is separate for each FIRST program. Pick the one you&apos;re working on.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingProgram("frc");
+                    setStep(pendingRole === "student" ? "student-name" : "mentor-code");
+                    setError("");
+                  }}
+                  className="w-full py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-base transition-colors shadow-sm flex items-center justify-center gap-3 border border-gray-200"
+                >
+                  <span className="text-lg font-black tracking-tight">FRC</span>
+                  <span className="text-slate-400 font-normal text-sm">FIRST Robotics Competition</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingProgram("ftc");
+                    setStep(pendingRole === "student" ? "student-name" : "mentor-code");
+                    setError("");
+                  }}
+                  className="w-full py-4 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-base transition-colors shadow-sm flex items-center justify-center gap-3 border border-orange-700"
+                >
+                  <span className="text-lg font-black tracking-tight">FTC</span>
+                  <span className="text-orange-100 font-normal text-sm">FIRST Tech Challenge</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {step === "student-name" && (
             <form onSubmit={handleStudentEnter} className="p-8">
               <button
                 type="button"
-                onClick={() => { setStep("role"); setError(""); setName(""); }}
+                onClick={goBackToProgram}
                 className="text-xs text-slate-400 hover:text-slate-600 mb-5 flex items-center gap-1 transition-colors"
               >
                 ← Back
@@ -103,14 +184,21 @@ export default function LandingPage() {
               <div className="mb-6">
                 <span className="text-3xl mb-3 block">🎓</span>
                 <h2 className="text-xl font-bold text-slate-800 mb-1">Student Access</h2>
-                <p className="text-slate-500 text-sm">Enter your name so your actions are tracked in the log.</p>
+                <p className="text-slate-500 text-sm">
+                  <span className="font-semibold text-slate-700 uppercase">{pendingProgram}</span>
+                  {" · "}
+                  Enter your name so your actions are tracked in the log.
+                </p>
               </div>
               <div className="flex flex-col gap-4">
                 <input
                   type="text"
                   placeholder="Your name"
                   value={name}
-                  onChange={(e) => { setName(e.target.value); setError(""); }}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setError("");
+                  }}
                   autoFocus
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black text-sm"
                 />
@@ -129,7 +217,7 @@ export default function LandingPage() {
             <form onSubmit={handleMentorEnter} className="p-8">
               <button
                 type="button"
-                onClick={() => { setStep("role"); setError(""); setCode(""); }}
+                onClick={goBackToProgram}
                 className="text-xs text-slate-400 hover:text-slate-600 mb-5 flex items-center gap-1 transition-colors"
               >
                 ← Back
@@ -137,7 +225,11 @@ export default function LandingPage() {
               <div className="mb-6">
                 <span className="text-3xl mb-3 block">🔑</span>
                 <h2 className="text-xl font-bold text-slate-800 mb-1">Mentor Access</h2>
-                <p className="text-slate-500 text-sm">Enter your 6-digit access code to open the admin dashboard.</p>
+                <p className="text-slate-500 text-sm">
+                  <span className="font-semibold text-slate-700 uppercase">{pendingProgram}</span>
+                  {" · "}
+                  Enter your 6-digit access code to open the admin dashboard.
+                </p>
               </div>
               <div className="flex flex-col gap-4">
                 <input
@@ -145,7 +237,10 @@ export default function LandingPage() {
                   inputMode="numeric"
                   placeholder="000000"
                   value={code}
-                  onChange={(e) => { setCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+                  onChange={(e) => {
+                    setCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                    setError("");
+                  }}
                   autoFocus
                   maxLength={6}
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-black text-center tracking-[0.6em] font-bold text-2xl"
@@ -164,7 +259,7 @@ export default function LandingPage() {
         </div>
 
         <p className="text-center text-gray-600 text-xs mt-6">
-          FRC Robotics Team · Inventory System
+          FIRST Robotics · FRC &amp; FTC inventory
         </p>
       </div>
     </div>
