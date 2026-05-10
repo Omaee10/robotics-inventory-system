@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Drawer, Part } from "@/lib/types";
+import { normalizeSku } from "@/lib/partSearch";
 import { useToast } from "@/lib/toastContext";
 import QuantityPopup from "./QuantityPopup";
 
@@ -124,9 +125,16 @@ export default function PartCard({
         <div className="p-4 flex flex-col gap-3">
           {/* Name + info + category */}
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-slate-800 text-sm leading-tight line-clamp-2 flex-1 min-w-0">
-              {part.name}
-            </h3>
+            <div className="flex-1 min-w-0">
+              {normalizeSku(part.partNumber) ? (
+                <p className="font-mono text-[11px] font-semibold text-slate-600 tracking-tight mb-0.5 truncate">
+                  {normalizeSku(part.partNumber)}
+                </p>
+              ) : null}
+              <h3 className="font-semibold text-slate-800 text-sm leading-tight line-clamp-2">
+                {part.name}
+              </h3>
+            </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
@@ -303,15 +311,43 @@ export default function PartCard({
                   ✕
                 </button>
               </div>
-              <div className="px-6 py-5 space-y-1">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                  Company / supplier
-                </p>
-                <p className="text-sm font-medium text-slate-800">
-                  {part.company.trim()
-                    ? part.company
-                    : "Not specified"}
-                </p>
+              <div className="px-6 py-5 space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                    Part number (SKU)
+                  </p>
+                  <p className="text-sm font-mono font-medium text-slate-800">
+                    {normalizeSku(part.partNumber)
+                      ? normalizeSku(part.partNumber)
+                      : "—"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                    Company / supplier
+                  </p>
+                  <p className="text-sm font-medium text-slate-800">
+                    {part.company.trim()
+                      ? part.company
+                      : "Not specified"}
+                  </p>
+                </div>
+                {part.vendorUrl.trim() &&
+                  /^https?:\/\//i.test(part.vendorUrl.trim()) && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                        Vendor URL
+                      </p>
+                      <a
+                        href={part.vendorUrl.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-blue-600 hover:underline break-all"
+                      >
+                        {part.vendorUrl.trim()}
+                      </a>
+                    </div>
+                  )}
               </div>
               <div className="px-6 pb-5">
                 <button

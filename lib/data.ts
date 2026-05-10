@@ -3,6 +3,8 @@ import { Part } from "./types";
 export const INITIAL_PARTS: Part[] = [
   {
     id: "1",
+    partNumber: "DEMO-SKU-001",
+    vendorUrl: "",
     name: "REV Through Bore Encoder",
     company: "REV Robotics",
     category: "Sensors",
@@ -15,6 +17,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "2",
+    partNumber: "DEMO-SKU-002",
+    vendorUrl: "",
     name: "NEO Brushless Motor",
     company: "REV Robotics",
     category: "Motors",
@@ -27,6 +31,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "3",
+    partNumber: "DEMO-SKU-003",
+    vendorUrl: "",
     name: "SPARK MAX Controller",
     company: "REV Robotics",
     category: "Electronics",
@@ -39,6 +45,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "4",
+    partNumber: "DEMO-SKU-004",
+    vendorUrl: "",
     name: "AndyMark CIM Motor",
     company: "AndyMark",
     category: "Motors",
@@ -51,6 +59,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "5",
+    partNumber: "DEMO-SKU-005",
+    vendorUrl: "",
     name: "Pneumatic Cylinder 1.5\"",
     company: "",
     category: "Pneumatics",
@@ -63,6 +73,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "6",
+    partNumber: "DEMO-SKU-006",
+    vendorUrl: "",
     name: "roboRIO 2.0",
     company: "NI / FIRST",
     category: "Electronics",
@@ -75,6 +87,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "7",
+    partNumber: "DEMO-SKU-007",
+    vendorUrl: "",
     name: "MK4i Swerve Module",
     company: "Swerve Drive Specialties",
     category: "Drive",
@@ -87,6 +101,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "8",
+    partNumber: "DEMO-SKU-008",
+    vendorUrl: "",
     name: "Limelight 3",
     company: "Limelight Robotics",
     category: "Vision",
@@ -99,6 +115,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "9",
+    partNumber: "DEMO-SKU-009",
+    vendorUrl: "",
     name: "REV Power Distribution Hub",
     company: "REV Robotics",
     category: "Electronics",
@@ -111,6 +129,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "10",
+    partNumber: "DEMO-SKU-010",
+    vendorUrl: "",
     name: "Victor SPX",
     company: "CTR Electronics",
     category: "Electronics",
@@ -123,6 +143,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "11",
+    partNumber: "DEMO-SKU-011",
+    vendorUrl: "",
     name: "Falcon 500 Motor",
     company: "VEX Robotics",
     category: "Motors",
@@ -135,6 +157,8 @@ export const INITIAL_PARTS: Part[] = [
   },
   {
     id: "12",
+    partNumber: "DEMO-SKU-012",
+    vendorUrl: "",
     name: "NavX2 Gyroscope",
     company: "Kauai Labs",
     category: "Sensors",

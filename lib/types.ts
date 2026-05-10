@@ -3,6 +3,8 @@ export type Program = "frc" | "ftc";
 
 export interface Part {
   id: string;
+  /** SKU / part number — unique per program when set (see migration 12). */
+  partNumber: string;
   name: string;
   /** Supplier / vendor name (e.g. REV Robotics). */
   company: string;
@@ -13,6 +15,8 @@ export interface Part {
   imageUrl: string;
   description: string;
   minQuantity: number;
+  /** Product page URL for reordering / BOM order lists. */
+  vendorUrl: string;
 }
 
 export interface Drawer {

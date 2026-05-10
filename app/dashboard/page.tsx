@@ -6,7 +6,9 @@ import Image from "next/image";
 import PartCard from "@/components/PartCard";
 import PartModal from "@/components/PartModal";
 import DrawerModal from "@/components/DrawerModal";
+import BomAnalysis from "@/components/BomAnalysis";
 import { Drawer, Part, PartCategory, PartSaveResult, Vendor } from "@/lib/types";
+import { filterAndSortPartsForSearch } from "@/lib/partSearch";
 import { FALLBACK_PART_CATEGORY_LABELS } from "@/lib/data";
 import {
   fetchDrawers,
@@ -84,19 +86,11 @@ export default function StudentDashboard() {
     }
   }, [categoryLabels, selectedCategory]);
 
-  const filteredParts = useMemo(() => {
-    const q = search.toLowerCase();
-    return parts.filter((p) => {
-      const matchesSearch =
-        p.name.toLowerCase().includes(q) ||
-        p.company.toLowerCase().includes(q) ||
-        p.drawerId.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q);
-      const matchesCategory =
-        selectedCategory === "All" || p.category === selectedCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [parts, search, selectedCategory]);
+  const filteredParts = useMemo(
+    () =>
+      filterAndSortPartsForSearch(parts, search, selectedCategory),
+    [parts, search, selectedCategory]
+  );
 
   const stats = useMemo(() => {
     const total = parts.reduce((sum, p) => sum + p.quantity, 0);
@@ -259,6 +253,12 @@ export default function StudentDashboard() {
             color={stats.lowStock > 0 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-700"} />
         </div>
 
+        <BomAnalysis
+          parts={parts}
+          drawers={drawers}
+          programSlug={session.program}
+        />
+
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
             <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -267,7 +267,7 @@ export default function StudentDashboard() {
             </svg>
             <input
               type="search"
-              placeholder="Search by name, company, category, or drawer…"
+              placeholder="Search by part number (SKU), name, company, category, or drawer…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent shadow-sm transition"
@@ -376,6 +376,7 @@ export default function StudentDashboard() {
         categoryOptions={categoryLabels}
         vendors={vendors}
         inventoryProgram={session.program}
+        existingParts={parts}
       />
       <DrawerModal
         isOpen={isDrawerModalOpen}

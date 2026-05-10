@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Drawer, Part, PartSaveResult, Program, Vendor } from "@/lib/types";
 import { FALLBACK_PART_CATEGORY_LABELS } from "@/lib/data";
+import { normalizeSku } from "@/lib/partSearch";
 import { useToast } from "@/lib/toastContext";
 
 interface PartModalProps {
@@ -20,9 +21,12 @@ interface PartModalProps {
   inventoryProgram: Program;
   /** Admin editing an existing part: allow changing program (e.g. move between FRC/FTC). */
   allowProgramEdit?: boolean;
+  /** Same-program inventory for SKU uniqueness checks (exclude current row when editing). */
+  existingParts?: Part[];
 }
 
 const EMPTY_FORM: Omit<Part, "id"> = {
+  partNumber: "",
   name: "",
   company: "",
   program: "frc",
@@ -32,6 +36,7 @@ const EMPTY_FORM: Omit<Part, "id"> = {
   imageUrl: "",
   description: "",
   minQuantity: 2,
+  vendorUrl: "",
 };
 
 export default function PartModal({
@@ -44,13 +49,13 @@ export default function PartModal({
   vendors = [],
   inventoryProgram,
   allowProgramEdit = false,
+  existingParts = [],
 }: PartModalProps) {
   const { addToast } = useToast();
   const [form, setForm] = useState<Omit<Part, "id">>(EMPTY_FORM);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState("");
-  const [productUrl, setProductUrl] = useState("");
   const [imgSearching, setImgSearching] = useState(false);
   const [imgMsg, setImgMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -125,11 +130,11 @@ export default function PartModal({
 
   useEffect(() => {
     setImgMsg(null);
-    setProductUrl("");
     setSelectedVendorId("");
     setSaveError(null);
     if (editPart) {
       setForm({
+        partNumber: editPart.partNumber,
         name: editPart.name,
         company: editPart.company,
         program: editPart.program,
@@ -139,6 +144,7 @@ export default function PartModal({
         imageUrl: editPart.imageUrl,
         description: editPart.description,
         minQuantity: editPart.minQuantity,
+        vendorUrl: editPart.vendorUrl ?? "",
       });
     } else {
       const defaultCat =
@@ -173,6 +179,28 @@ export default function PartModal({
       return;
     }
 
+    const trimmedSku = normalizeSku(form.partNumber);
+    if (!trimmedSku) {
+      addToast("Enter a part number (SKU).", "error");
+      return;
+    }
+
+    const targetProgram = allowProgramEdit ? form.program : inventoryProgram;
+    const skuLower = trimmedSku.toLowerCase();
+    const duplicate = existingParts.some(
+      (p) =>
+        p.program === targetProgram &&
+        p.id !== editPart?.id &&
+        normalizeSku(p.partNumber).toLowerCase() === skuLower
+    );
+    if (duplicate) {
+      addToast(
+        "This part number is already used in your inventory for this program.",
+        "error"
+      );
+      return;
+    }
+
     if (drawers.length > 0) {
       if (!form.drawerId) {
         addToast("Choose a drawer for this part.", "error");
@@ -197,7 +225,9 @@ export default function PartModal({
 
     const payload = {
       ...form,
-      program: allowProgramEdit ? form.program : inventoryProgram,
+      partNumber: trimmedSku,
+      vendorUrl: form.vendorUrl.trim(),
+      program: targetProgram,
       id: editPart?.id,
       imageUrl:
         trimmedImg ||
@@ -260,6 +290,25 @@ export default function PartModal({
           noValidate
           className="px-6 py-5 flex flex-col gap-4"
         >
+          {/* Part number / SKU */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">
+              Part Number (SKU) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              inputMode="text"
+              spellCheck={false}
+              placeholder="e.g. REV-41-4099 — scan or type"
+              value={form.partNumber}
+              onChange={(e) => setForm({ ...form, partNumber: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition font-mono"
+            />
+            <p className="text-[11px] text-slate-400">
+              Must be unique for this program (used for BOM CSV matching).
+            </p>
+          </div>
+
           {/* Part Name */}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">
@@ -424,12 +473,13 @@ export default function PartModal({
                   onChange={(e) => {
                     const id = e.target.value;
                     setSelectedVendorId(id);
-                    setProductUrl("");
                     setImgMsg(null);
                     const v = vendors.find((x) => x.id === id);
-                    if (v) {
-                      setForm((prev) => ({ ...prev, company: v.name }));
-                    }
+                    setForm((prev) => ({
+                      ...prev,
+                      vendorUrl: "",
+                      company: v ? v.name : prev.company,
+                    }));
                   }}
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
                 >
@@ -459,9 +509,9 @@ export default function PartModal({
             {/* Product URL */}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-slate-700">
-                Product URL{" "}
+                Vendor / product URL{" "}
                 <span className="text-slate-400 font-normal">
-                  — optional; click Fetch to try reading the page
+                  — optional; saved for reorder lists; Fetch tries to read an image
                 </span>
               </label>
               <p className="text-[11px] text-slate-400 leading-snug">
@@ -475,17 +525,17 @@ export default function PartModal({
                       ? `${selectedVendor.base_url}/products/…`
                       : "https://www.revrobotics.com/products/…"
                   }
-                  value={productUrl}
+                  value={form.vendorUrl}
                   onChange={(e) => {
-                    setProductUrl(e.target.value);
+                    setForm({ ...form, vendorUrl: e.target.value });
                     setImgMsg(null);
                   }}
                   className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
                 />
                 <button
                   type="button"
-                  onClick={() => scrapeImage(productUrl)}
-                  disabled={imgSearching || !productUrl.trim().startsWith("http")}
+                  onClick={() => scrapeImage(form.vendorUrl)}
+                  disabled={imgSearching || !form.vendorUrl.trim().startsWith("http")}
                   title="Fetch image from this URL"
                   className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-black hover:bg-gray-800 text-white text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                 >

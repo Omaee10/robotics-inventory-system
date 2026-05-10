@@ -12,6 +12,25 @@ function formatSupabaseError(error: PostgrestError): string {
   return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
 }
 
+/** User-facing hint when DB lacks migration 12 or PostgREST cache is stale. */
+function hintPartsSkuColumnsMissing(error: PostgrestError): string | null {
+  const raw = formatSupabaseError(error);
+  const m = raw.toLowerCase();
+  const cacheIssue =
+    error.code === "PGRST204" ||
+    m.includes("schema cache") ||
+    m.includes("could not find");
+  if (!cacheIssue) return null;
+  if (m.includes("part_number") || m.includes("vendor_url")) {
+    return [
+      "Your Supabase database needs the latest parts columns.",
+      'Open Supabase → SQL Editor, run the script in supabase/12_parts_part_number_vendor_url.sql (it ends with NOTIFY to refresh the API).',
+      "If it still fails: Dashboard → Settings → API → reload schema, or wait a minute and retry.",
+    ].join(" ");
+  }
+  return null;
+}
+
 /** True when DB/schema does not have `logs.program` yet (migration 09 not applied). */
 function isLogsProgramColumnMissingError(error: PostgrestError): boolean {
   const msg = formatSupabaseError(error).toLowerCase();
@@ -72,6 +91,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Raw DB row shape (snake_case column names)
 interface DbPart {
   id: string;
+  part_number?: string | null;
   name: string;
   company?: string | null;
   program?: string | null;
@@ -81,11 +101,13 @@ interface DbPart {
   image_url: string;
   description: string;
   min_quantity: number;
+  vendor_url?: string | null;
 }
 
 function mapDbPart(row: DbPart): Part {
   return {
     id: row.id,
+    partNumber: row.part_number ?? "",
     name: row.name,
     company: row.company ?? "",
     program: normalizeProgram(row.program),
@@ -95,11 +117,13 @@ function mapDbPart(row: DbPart): Part {
     imageUrl: row.image_url,
     description: row.description,
     minQuantity: row.min_quantity,
+    vendorUrl: row.vendor_url ?? "",
   };
 }
 
 function partToDb(part: Omit<Part, "id">): Omit<DbPart, "id"> {
   return {
+    part_number: part.partNumber.trim(),
     name: part.name,
     company: part.company.trim() || "",
     program: part.program,
@@ -109,6 +133,7 @@ function partToDb(part: Omit<Part, "id">): Omit<DbPart, "id"> {
     image_url: part.imageUrl,
     description: part.description,
     min_quantity: part.minQuantity,
+    vendor_url: part.vendorUrl.trim(),
   };
 }
 
@@ -138,7 +163,8 @@ export async function insertPart(
 
   if (error) {
     console.error("Supabase insertPart error:", formatSupabaseError(error));
-    return { data: null, error: formatSupabaseError(error) };
+    const hint = hintPartsSkuColumnsMissing(error);
+    return { data: null, error: hint ?? formatSupabaseError(error) };
   }
   return { data: mapDbPart(data as DbPart), error: null };
 }

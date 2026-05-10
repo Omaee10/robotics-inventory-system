@@ -8,6 +8,7 @@ import PartCard from "@/components/PartCard";
 import PartModal from "@/components/PartModal";
 import DrawerModal from "@/components/DrawerModal";
 import CategoryModal from "@/components/CategoryModal";
+import BomAnalysis from "@/components/BomAnalysis";
 import {
   AccessCode,
   Drawer,
@@ -19,6 +20,7 @@ import {
   Vendor,
 } from "@/lib/types";
 import { FALLBACK_PART_CATEGORY_LABELS } from "@/lib/data";
+import { filterAndSortPartsForSearch } from "@/lib/partSearch";
 import {
   fetchParts,
   insertPart,
@@ -47,6 +49,7 @@ type Tab = "inventory" | "logs" | "codes" | "vendors";
 // ── CSV export helper ───────────────────────────────────────────────────────
 function exportInventoryCSV(parts: Part[], drawers: Drawer[], program: string) {
   const headers = [
+    "Part Number",
     "Name",
     "Company",
     "Program",
@@ -54,9 +57,11 @@ function exportInventoryCSV(parts: Part[], drawers: Drawer[], program: string) {
     "Drawer",
     "Quantity",
     "Min Quantity",
+    "Vendor URL",
     "Description",
   ];
   const rows = parts.map((p) => [
+    p.partNumber,
     p.name,
     p.company,
     p.program.toUpperCase(),
@@ -64,6 +69,7 @@ function exportInventoryCSV(parts: Part[], drawers: Drawer[], program: string) {
     drawers.find((d) => d.id === p.drawerId)?.label ?? p.drawerId,
     String(p.quantity),
     String(p.minQuantity),
+    p.vendorUrl ?? "",
     p.description,
   ]);
   const csv = [headers, ...rows]
@@ -248,18 +254,11 @@ export default function AdminDashboard({
   }, [activeTab, loadLogs, loadCodes, loadVendors]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
-  const filteredParts = useMemo(() => {
-    const q = search.toLowerCase();
-    return parts.filter((p) => {
-      const matchesSearch =
-        p.name.toLowerCase().includes(q) ||
-        p.company.toLowerCase().includes(q) ||
-        p.drawerId.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q);
-      const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [parts, search, selectedCategory]);
+  const filteredParts = useMemo(
+    () =>
+      filterAndSortPartsForSearch(parts, search, selectedCategory),
+    [parts, search, selectedCategory]
+  );
 
   const stats = useMemo(() => {
     const total = parts.reduce((sum, p) => sum + p.quantity, 0);
@@ -668,6 +667,12 @@ export default function AdminDashboard({
               </div>
             )}
 
+            <BomAnalysis
+              parts={parts}
+              drawers={drawers}
+              programSlug={sectionProgram}
+            />
+
             {/* Toolbar */}
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
               <div className="relative flex-1">
@@ -677,7 +682,7 @@ export default function AdminDashboard({
                 </svg>
                 <input
                   type="search"
-                  placeholder="Search by name, company, category, or drawer…"
+                  placeholder="Search by part number (SKU), name, company, category, or drawer…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black shadow-sm transition"
@@ -1110,6 +1115,7 @@ export default function AdminDashboard({
         vendors={vendors}
         inventoryProgram={sectionProgram}
         allowProgramEdit={!!editPart}
+        existingParts={parts}
       />
       <DrawerModal
         isOpen={isDrawerModalOpen}
